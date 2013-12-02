@@ -36,7 +36,8 @@ static void clear_exceptional_entry(struct address_space *mapping,
 	 * without the tree itself locked.  These unlocked entries
 	 * need verification under the tree lock.
 	 */
-	radix_tree_delete_item(&mapping->page_tree, index, entry);
+	if (radix_tree_delete_item(&mapping->page_tree, index, entry) == entry)
+		mapping->nrshadows--;
 	spin_unlock_irq(&mapping->tree_lock);
 }
 
@@ -230,7 +231,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 	int i;
 
 	cleancache_invalidate_inode(mapping);
-	if (mapping->nrpages == 0)
+	if (mapping->nrpages == 0 && mapping->nrshadows == 0)
 		return;
 
 	BUG_ON((lend & (PAGE_CACHE_SIZE - 1)) != (PAGE_CACHE_SIZE - 1));
@@ -352,18 +353,42 @@ EXPORT_SYMBOL(truncate_inode_pages);
  *
  * Filesystems have to use this in the .evict_inode path to inform the
  * VM that this is the final truncate and the inode is going away.
- *
- * Upstream memakai varian ini untuk sekaligus membersihkan shadow entry dan
- * menyetel AS_EXITING supaya reclaim berhenti memasang shadow baru. Kernel ini
- * TIDAK punya mesin shadow entry sama sekali -- nol nrshadows di mm/, tanpa
- * AS_EXITING di pagemap.h, tanpa mm/workingset.c, dan __delete_from_page_cache()
- * masih bertanda tangan lama tanpa argumen shadow. Karena tidak ada shadow
- * entry yang perlu dibersihkan dan tidak ada reclaim yang perlu dihentikan,
- * sisa semantiknya persis truncate_inode_pages(mapping, 0).
  */
 void truncate_inode_pages_final(struct address_space *mapping)
 {
-	truncate_inode_pages(mapping, 0);
+	unsigned long nrshadows;
+	unsigned long nrpages;
+
+	/*
+	 * Page reclaim can not participate in regular inode lifetime
+	 * management (can't call iput()) and thus can race with the
+	 * inode teardown.  Tell it when the address space is exiting,
+	 * so that it does not install eviction information after the
+	 * final truncate has begun.
+	 */
+	mapping_set_exiting(mapping);
+
+	/*
+	 * When reclaim installs eviction entries, it increases
+	 * nrshadows first, then decreases nrpages.  Make sure we see
+	 * this in the right order or we might miss an entry.
+	 */
+	nrpages = mapping->nrpages;
+	smp_rmb();
+	nrshadows = mapping->nrshadows;
+
+	if (nrpages || nrshadows) {
+		/*
+		 * As truncation uses a lockless tree lookup, acquire
+		 * the spinlock to make sure any ongoing tree
+		 * modification that does not see AS_EXITING is
+		 * completed before starting the final truncate.
+		 */
+		spin_lock_irq(&mapping->tree_lock);
+		spin_unlock_irq(&mapping->tree_lock);
+
+		truncate_inode_pages(mapping, 0);
+	}
 }
 EXPORT_SYMBOL(truncate_inode_pages_final);
 
@@ -460,7 +485,7 @@ invalidate_complete_page2(struct address_space *mapping, struct page *page)
 		goto failed;
 
 	BUG_ON(page_has_private(page));
-	__delete_from_page_cache(page);
+	__delete_from_page_cache(page, NULL);
 	spin_unlock_irq(&mapping->tree_lock);
 	mem_cgroup_uncharge_cache_page(page);
 
