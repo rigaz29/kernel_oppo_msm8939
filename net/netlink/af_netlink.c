@@ -2570,6 +2570,7 @@ int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
 
 	cb = &nlk->cb;
 	memset(cb, 0, sizeof(*cb));
+	cb->start = control->start;
 	cb->dump = control->dump;
 	cb->done = control->done;
 	cb->nlh = nlh;
@@ -2577,6 +2578,12 @@ int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
 	cb->module = control->module;
 	cb->min_dump_alloc = control->min_dump_alloc;
 	cb->skb = skb;
+
+	if (cb->start) {
+		ret = cb->start(cb);
+		if (ret)
+			goto error_put;
+	}
 
 	nlk->cb_running = true;
 
@@ -2593,6 +2600,8 @@ int __netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
 	 */
 	return -EINTR;
 
+error_put:
+	module_put(control->module);
 error_unlock:
 	sock_put(sk);
 	mutex_unlock(nlk->cb_mutex);
