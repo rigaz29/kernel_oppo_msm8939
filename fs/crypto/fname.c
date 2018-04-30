@@ -108,10 +108,8 @@ static int fname_decrypt(struct inode *inode,
 	struct crypto_ablkcipher *tfm = ci->ci_ctfm;
 	int res = 0;
 	union fscrypt_iv iv;
-	unsigned lim;
 
-	lim = inode->i_sb->s_cop->max_namelen(inode);
-	if (iname->len <= 0 || iname->len > lim)
+	if (iname->len <= 0)
 		return -EIO;
 
 	/* Allocate request */
