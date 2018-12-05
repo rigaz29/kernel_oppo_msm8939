@@ -463,7 +463,8 @@ ccid_bridge_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		}
 		ret = __usb_get_extra_descriptor(udev->rawdescriptors[0],
 				le16_to_cpu(udev->config[0].desc.wTotalLength),
-				CCID_CLASS_DECRIPTOR_TYPE, (void **) &buf);
+				CCID_CLASS_DECRIPTOR_TYPE, (void **) &buf,
+				sizeof(struct usb_descriptor_header));
 		if (ret) {
 			ret = -ENOENT;
 			break;
