@@ -1317,6 +1317,15 @@ struct task_struct {
 	 * sebagai bangun biasa.
 	 */
 	unsigned sched_psi_wake_requeue:1;
+
+	/*
+	 * Written by current only. The bits above share a word with
+	 * sched_reset_on_fork and sched_contributes_to_load, which other
+	 * CPUs write, so keep this one in a word of its own.
+	 */
+	unsigned :0;
+	/* Stalled due to lack of memory */
+	unsigned in_memstall:1;
 #endif
 
 	unsigned long atomic_flags; /* Flags needing atomic access. */
@@ -1860,12 +1869,6 @@ static inline void sched_set_io_is_busy(int val) {};
 #define PF_KTHREAD	0x00200000	/* I am a kernel thread */
 #define PF_RANDOMIZE	0x00400000	/* randomize virtual address space */
 #define PF_SWAPWRITE	0x00800000	/* Allowed to write to swap */
-/*
- * PF_MEMSTALL memakai 0x00000001, BUKAN 0x01000000 seperti di hulu -- bit itu
- * sudah dipakai PF_SPREAD_PAGE di pohon ini. 0x00000001 satu-satunya yang
- * masih bebas.
- */
-#define PF_MEMSTALL	0x00000001	/* Stalled due to lack of memory */
 #define PF_SPREAD_PAGE	0x01000000	/* Spread page cache over cpuset */
 #define PF_SPREAD_SLAB	0x02000000	/* Spread some slab caches over cpuset */
 #define PF_NO_SETAFFINITY 0x04000000	/* Userland is not allowed to meddle with cpus_allowed */
