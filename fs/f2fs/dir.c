@@ -584,7 +584,7 @@ add_dentry:
 
 		/* synchronize inode page's data from inode cache */
 		if (is_inode_flag_set(inode, FI_NEW_INODE))
-			f2fs_update_inode(inode, page);
+			update_inode(inode, page);
 
 		f2fs_put_page(page, 1);
 	}
