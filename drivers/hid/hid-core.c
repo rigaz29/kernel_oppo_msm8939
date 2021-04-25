@@ -1233,7 +1233,7 @@ u8 *hid_alloc_report_buf(struct hid_report *report, gfp_t flags)
 	 * of implement() working on 8 byte chunks
 	 */
 
-	int len = ((report->size - 1) >> 3) + 1 + (report->id > 0) + 7;
+	u32 len = hid_report_len(report) + 7;
 
 	return kzalloc(len, flags);
 }
