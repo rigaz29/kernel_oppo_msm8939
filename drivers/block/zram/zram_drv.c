@@ -1268,6 +1268,14 @@ static int zram_remove(struct zram *zram)
 
 	blk_cleanup_queue(zram->disk->queue);
 	del_gendisk(zram->disk);
+
+	/*
+	 * disksize_store() may be called in between zram_reset_device()
+	 * and del_gendisk(), so run the last reset to avoid leaking
+	 * anything allocated with disksize_store()
+	 */
+	zram_reset_device(zram);
+
 	put_disk(zram->disk);
 	kfree(zram);
 	return 0;
