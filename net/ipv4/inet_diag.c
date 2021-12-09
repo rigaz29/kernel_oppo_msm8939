@@ -114,6 +114,7 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 	r->idiag_state = sk->sk_state;
 	r->idiag_timer = 0;
 	r->idiag_retrans = 0;
+	r->idiag_expires = 0;
 
 	r->id.idiag_if = sk->sk_bound_dev_if;
 	sock_diag_save_cookie(sk, r->id.idiag_cookie);
@@ -190,9 +191,6 @@ int inet_sk_diag_fill(struct sock *sk, struct inet_connection_sock *icsk,
 		r->idiag_timer = 2;
 		r->idiag_retrans = icsk->icsk_probes_out;
 		r->idiag_expires = EXPIRES_IN_MS(sk->sk_timer.expires);
-	} else {
-		r->idiag_timer = 0;
-		r->idiag_expires = 0;
 	}
 #undef EXPIRES_IN_MS
 
