@@ -341,7 +341,7 @@ struct sock {
 	struct xfrm_policy	*sk_policy[2];
 #endif
 	unsigned long 		sk_flags;
-	struct dst_entry	*sk_rx_dst;
+	struct dst_entry __rcu	*sk_rx_dst;
 	struct dst_entry __rcu	*sk_dst_cache;
 	spinlock_t		sk_dst_lock;
 	atomic_t		sk_wmem_alloc;
@@ -1473,6 +1473,16 @@ static inline void sk_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
  * accesses from user process context.
  */
 #define sock_owned_by_user(sk)	((sk)->sk_lock.owned)
+
+#ifdef CONFIG_LOCKDEP
+static inline bool lockdep_sock_is_held(const struct sock *csk)
+{
+	struct sock *sk = (struct sock *)csk;
+
+	return lockdep_is_held(&sk->sk_lock) ||
+	       lockdep_is_held(&sk->sk_lock.slock);
+}
+#endif
 
 static inline void sock_release_ownership(struct sock *sk)
 {
