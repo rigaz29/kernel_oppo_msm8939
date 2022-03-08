@@ -22,7 +22,7 @@
 
 static LIST_HEAD(f2fs_stat_list);
 static struct dentry *f2fs_debugfs_root;
-static DEFINE_MUTEX(f2fs_stat_mutex);
+static DEFINE_RAW_SPINLOCK(f2fs_stat_lock);
 
 static void update_general_status(struct f2fs_sb_info *sbi)
 {
@@ -279,8 +279,9 @@ static int stat_show(struct seq_file *s, void *v)
 	struct f2fs_stat_info *si;
 	int i = 0;
 	int j;
+	unsigned long flags;
 
-	mutex_lock(&f2fs_stat_mutex);
+	raw_spin_lock_irqsave(&f2fs_stat_lock, flags);
 	list_for_each_entry(si, &f2fs_stat_list, stat_list) {
 		char devname[BDEVNAME_SIZE];
 
@@ -454,7 +455,7 @@ static int stat_show(struct seq_file *s, void *v)
 		seq_printf(s, "  - paged : %llu KB\n",
 				si->page_mem >> 10);
 	}
-	mutex_unlock(&f2fs_stat_mutex);
+	raw_spin_unlock_irqrestore(&f2fs_stat_lock, flags);
 	return 0;
 }
 
@@ -475,6 +476,7 @@ int f2fs_build_stats(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_super_block *raw_super = F2FS_RAW_SUPER(sbi);
 	struct f2fs_stat_info *si;
+	unsigned long flags;
 	int i;
 
 	si = f2fs_kzalloc(sbi, sizeof(struct f2fs_stat_info), GFP_KERNEL);
@@ -509,9 +511,9 @@ int f2fs_build_stats(struct f2fs_sb_info *sbi)
 	atomic_set(&sbi->max_aw_cnt, 0);
 	atomic_set(&sbi->max_vw_cnt, 0);
 
-	mutex_lock(&f2fs_stat_mutex);
+	raw_spin_lock_irqsave(&f2fs_stat_lock, flags);
 	list_add_tail(&si->stat_list, &f2fs_stat_list);
-	mutex_unlock(&f2fs_stat_mutex);
+	raw_spin_unlock_irqrestore(&f2fs_stat_lock, flags);
 
 	return 0;
 }
@@ -519,10 +521,11 @@ int f2fs_build_stats(struct f2fs_sb_info *sbi)
 void f2fs_destroy_stats(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_stat_info *si = F2FS_STAT(sbi);
+	unsigned long flags;
 
-	mutex_lock(&f2fs_stat_mutex);
+	raw_spin_lock_irqsave(&f2fs_stat_lock, flags);
 	list_del(&si->stat_list);
-	mutex_unlock(&f2fs_stat_mutex);
+	raw_spin_unlock_irqrestore(&f2fs_stat_lock, flags);
 
 	kvfree(si);
 }
