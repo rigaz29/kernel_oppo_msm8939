@@ -103,6 +103,8 @@ static ATOMIC_NOTIFIER_HEAD(netlink_chain);
 
 static inline u32 netlink_group_mask(u32 group)
 {
+	if (group > 32)
+		return 0;
 	return group ? 1 << (group - 1) : 0;
 }
 
