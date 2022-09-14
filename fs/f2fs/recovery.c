@@ -392,7 +392,7 @@ static int check_index_in_prev_nodes(struct f2fs_sb_info *sbi,
 	struct dnode_of_data tdn = *dn;
 	nid_t ino, nid;
 	struct inode *inode;
-	unsigned int offset;
+	unsigned int offset, ofs_in_node, max_addrs;
 	block_t bidx;
 	int i;
 
@@ -418,15 +418,33 @@ static int check_index_in_prev_nodes(struct f2fs_sb_info *sbi,
 got_it:
 	/* Use the locked dnode page and inode */
 	nid = le32_to_cpu(sum.nid);
+	ofs_in_node = le16_to_cpu(sum.ofs_in_node);
+
+	/*
+	 * ofs_in_node indexes the owner's node page directly only when the
+	 * owner is dn's inode or dn's node page; any other owner goes
+	 * through f2fs_get_dnode_of_data() below.
+	 */
+	if (dn->inode->i_ino == nid || dn->nid == nid) {
+		max_addrs = dn->inode->i_ino == nid ?
+				ADDRS_PER_INODE(dn->inode) :
+				ADDRS_PER_PAGE(dn->node_page, dn->inode);
+		if (ofs_in_node >= max_addrs) {
+			f2fs_err(sbi, "Inconsistent ofs_in_node:%u in summary, ino:%lu, nid:%u, max:%u",
+				ofs_in_node, dn->inode->i_ino, nid, max_addrs);
+			return -EFSCORRUPTED;
+		}
+	}
+
 	if (dn->inode->i_ino == nid) {
 		tdn.nid = nid;
 		if (!dn->inode_page_locked)
 			lock_page(dn->inode_page);
 		tdn.node_page = dn->inode_page;
-		tdn.ofs_in_node = le16_to_cpu(sum.ofs_in_node);
+		tdn.ofs_in_node = ofs_in_node;
 		goto truncate_out;
 	} else if (dn->nid == nid) {
-		tdn.ofs_in_node = le16_to_cpu(sum.ofs_in_node);
+		tdn.ofs_in_node = ofs_in_node;
 		goto truncate_out;
 	}
 
