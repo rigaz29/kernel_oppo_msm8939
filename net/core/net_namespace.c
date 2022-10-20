@@ -89,6 +89,7 @@ assign:
 
 static int ops_init(const struct pernet_operations *ops, struct net *net)
 {
+	struct net_generic *ng;
 	int err = -ENOMEM;
 	void *data = NULL;
 
@@ -107,7 +108,17 @@ static int ops_init(const struct pernet_operations *ops, struct net *net)
 	if (!err)
 		return 0;
 
+	if (ops->id && ops->size) {
 cleanup:
+		ng = rcu_dereference_protected(net->gen,
+					       lockdep_is_held(&net_mutex));
+		/* 3.10 net_generic ids are 1-based, and a failed
+		 * net_assign_generic() may not have grown the array.
+		 */
+		if (*ops->id <= ng->len)
+			ng->ptr[*ops->id - 1] = NULL;
+	}
+
 	kfree(data);
 
 out:
