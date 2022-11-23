@@ -544,8 +544,10 @@ static int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
 		if (err >= 0)
 			err = device_bind_driver(d);
 
-		if (err)
+		if (err) {
+			d->driver = NULL;
 			return err;
+		}
 	}
 
 	if (phydev->attached_dev) {
