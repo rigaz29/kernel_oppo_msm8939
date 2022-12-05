@@ -178,6 +178,7 @@ static int swapin_walk_pmd_entry(pmd_t *pmd, unsigned long start,
 		if (page)
 			page_cache_release(page);
 	}
+	cond_resched();
 
 	return 0;
 }
