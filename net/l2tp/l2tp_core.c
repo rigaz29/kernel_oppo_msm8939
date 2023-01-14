@@ -1180,7 +1180,7 @@ int l2tp_xmit_skb(struct l2tp_session *session, struct sk_buff *skb, int hdr_len
 			      IPSKB_REROUTED);
 	nf_reset(skb);
 
-	bh_lock_sock(sk);
+	bh_lock_sock_nested(sk);
 	if (sock_owned_by_user(sk)) {
 		kfree_skb(skb);
 		ret = NET_XMIT_DROP;
@@ -1570,8 +1570,6 @@ out:
 	return err;
 }
 
-static struct lock_class_key l2tp_socket_class;
-
 int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id, u32 peer_tunnel_id, struct l2tp_tunnel_cfg *cfg, struct l2tp_tunnel **tunnelp)
 {
 	struct l2tp_tunnel *tunnel = NULL;
@@ -1632,16 +1630,20 @@ int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id, u32 
 		break;
 	}
 
+	lock_sock(sk);
+
 	/* Check if this socket has already been prepped */
 	tunnel = l2tp_tunnel(sk);
 	if (tunnel != NULL) {
 		/* This socket has already been prepped */
+		release_sock(sk);
 		err = -EBUSY;
 		goto err;
 	}
 
 	tunnel = kzalloc(sizeof(struct l2tp_tunnel), GFP_KERNEL);
 	if (tunnel == NULL) {
+		release_sock(sk);
 		err = -ENOMEM;
 		goto err;
 	}
@@ -1704,9 +1706,10 @@ int l2tp_tunnel_create(struct net *net, int fd, int version, u32 tunnel_id, u32 
 	sk->sk_destruct = &l2tp_tunnel_destruct;
 	tunnel->sock = sk;
 	tunnel->fd = fd;
-	lockdep_set_class_and_name(&sk->sk_lock.slock, &l2tp_socket_class, "l2tp_sock");
 
 	sk->sk_allocation = GFP_ATOMIC;
+
+	release_sock(sk);
 
 	/* Init delete workqueue struct */
 	INIT_WORK(&tunnel->del_work, l2tp_tunnel_del_work);
