@@ -2025,7 +2025,7 @@ static int nlmsg_populate_fdb_fill(struct sk_buff *skb,
 	ndm->ndm_ifindex = dev->ifindex;
 	ndm->ndm_state   = NUD_PERMANENT;
 
-	if (nla_put(skb, NDA_LLADDR, ETH_ALEN, addr))
+	if (nla_put(skb, NDA_LLADDR, dev->addr_len, addr))
 		goto nla_put_failure;
 
 	return nlmsg_end(skb, nlh);
@@ -2035,9 +2035,10 @@ nla_put_failure:
 	return -EMSGSIZE;
 }
 
-static inline size_t rtnl_fdb_nlmsg_size(void)
+static inline size_t rtnl_fdb_nlmsg_size(const struct net_device *dev)
 {
-	return NLMSG_ALIGN(sizeof(struct ndmsg)) + nla_total_size(ETH_ALEN);
+	return NLMSG_ALIGN(sizeof(struct ndmsg)) +
+	       nla_total_size(dev->addr_len);	/* NDA_LLADDR */
 }
 
 static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, int type)
@@ -2046,7 +2047,7 @@ static void rtnl_fdb_notify(struct net_device *dev, u8 *addr, int type)
 	struct sk_buff *skb;
 	int err = -ENOBUFS;
 
-	skb = nlmsg_new(rtnl_fdb_nlmsg_size(), GFP_ATOMIC);
+	skb = nlmsg_new(rtnl_fdb_nlmsg_size(dev), GFP_ATOMIC);
 	if (!skb)
 		goto errout;
 
