@@ -98,6 +98,30 @@ MODULE_PARM_DESC (msg_level, "Override default message level");
 /*-------------------------------------------------------------------------*/
 
 /* handles CDC Ethernet and many other network "bulk data" interfaces */
+/* usb_check_bulk_endpoints() from 6.5: every address in the zero-terminated
+ * list must be a bulk endpoint of the interface's current altsetting.
+ */
+static bool usbnet_check_bulk_endpoints(const struct usb_interface *intf,
+					const u8 *ep_addrs)
+{
+	const struct usb_host_interface *alt = intf->cur_altsetting;
+	int i;
+
+	for (; *ep_addrs; ep_addrs++) {
+		for (i = 0; i < alt->desc.bNumEndpoints; i++) {
+			const struct usb_endpoint_descriptor *epd =
+				&alt->endpoint[i].desc;
+
+			if (epd->bEndpointAddress == *ep_addrs &&
+			    usb_endpoint_xfer_bulk(epd))
+				break;
+		}
+		if (i == alt->desc.bNumEndpoints)
+			return false;
+	}
+	return true;
+}
+
 int usbnet_get_endpoints(struct usbnet *dev, struct usb_interface *intf)
 {
 	int				tmp;
@@ -1590,6 +1614,10 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	} else if (!info->in || !info->out)
 		status = usbnet_get_endpoints (dev, udev);
 	else {
+		u8 ep_addrs[3] = {
+			info->in + USB_DIR_IN, info->out + USB_DIR_OUT, 0
+		};
+
 		dev->in = usb_rcvbulkpipe (xdev, info->in);
 		dev->out = usb_sndbulkpipe (xdev, info->out);
 		if (!(info->flags & FLAG_NO_SETINT))
@@ -1599,6 +1627,8 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 		else
 			status = 0;
 
+		if (status == 0 && !usbnet_check_bulk_endpoints(udev, ep_addrs))
+			status = -EINVAL;
 	}
 	if (status >= 0 && dev->status)
 		status = init_status (dev, udev);
