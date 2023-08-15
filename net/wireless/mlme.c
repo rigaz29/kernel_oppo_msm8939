@@ -269,6 +269,9 @@ int __cfg80211_mlme_auth(struct cfg80211_registered_device *rdev,
 
 	ASSERT_WDEV_LOCK(wdev);
 
+	if (ether_addr_equal(bssid, dev->dev_addr))
+		return -EINVAL;
+
 	if (auth_type == NL80211_AUTHTYPE_SHARED_KEY)
 		if (!key || !key_len || key_idx < 0 || key_idx > 4)
 			return -EINVAL;
@@ -372,6 +375,9 @@ int __cfg80211_mlme_assoc(struct cfg80211_registered_device *rdev,
 	bool was_connected = false;
 
 	ASSERT_WDEV_LOCK(wdev);
+
+	if (ether_addr_equal(bssid, dev->dev_addr))
+		return -EINVAL;
 
 	if (wdev->current_bss && req->prev_bssid &&
 	    ether_addr_equal(wdev->current_bss->pub.bssid, req->prev_bssid)) {
