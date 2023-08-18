@@ -591,7 +591,8 @@ int f2fs_add_inline_entry(struct inode *dir, const struct qstr *new_name,
 	}
 
 	if (inode) {
-		down_write(&F2FS_I(inode)->i_sem);
+		down_write_nested(&F2FS_I(inode)->i_sem,
+						SINGLE_DEPTH_NESTING);
 		page = f2fs_init_inode_metadata(inode, dir, new_name,
 						orig_name, ipage);
 		if (IS_ERR(page)) {
