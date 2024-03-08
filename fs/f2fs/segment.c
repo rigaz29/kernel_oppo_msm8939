@@ -2363,7 +2363,7 @@ void f2fs_invalidate_blocks(struct f2fs_sb_info *sbi, block_t addr)
 	if (addr == NEW_ADDR)
 		return;
 
-	invalidate_mapping_pages(META_MAPPING(sbi), addr, addr);
+	f2fs_truncate_meta_inode_pages(sbi, addr, 1);
 
 	/* add it into sit main buffer */
 	down_write(&sit_i->sentry_lock);
@@ -3329,8 +3329,7 @@ reallocate:
 	f2fs_allocate_data_block(fio->sbi, fio->page, fio->old_blkaddr,
 			&fio->new_blkaddr, sum, type, fio, true);
 	if (GET_SEGNO(fio->sbi, fio->old_blkaddr) != NULL_SEGNO)
-		invalidate_mapping_pages(META_MAPPING(fio->sbi),
-					fio->old_blkaddr, fio->old_blkaddr);
+		f2fs_truncate_meta_inode_pages(fio->sbi, fio->old_blkaddr, 1);
 
 	/* writeout dirty page into bdev */
 	f2fs_submit_page_write(fio);
@@ -3415,8 +3414,8 @@ int f2fs_inplace_write_data(struct f2fs_io_info *fio)
 		return -EFSCORRUPTED;
 	}
 
-	invalidate_mapping_pages(META_MAPPING(sbi),
-				fio->new_blkaddr, fio->new_blkaddr);
+	if (f2fs_post_read_required(fio->page->mapping->host))
+		f2fs_truncate_meta_inode_pages(sbi, fio->new_blkaddr, 1);
 
 	stat_inc_inplace_blocks(fio->sbi);
 
@@ -3500,8 +3499,7 @@ void f2fs_do_replace_block(struct f2fs_sb_info *sbi, struct f2fs_summary *sum,
 	if (!recover_curseg || recover_newaddr)
 		update_sit_entry(sbi, new_blkaddr, 1);
 	if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO) {
-		invalidate_mapping_pages(META_MAPPING(sbi),
-					old_blkaddr, old_blkaddr);
+		f2fs_truncate_meta_inode_pages(sbi, old_blkaddr, 1);
 		update_sit_entry(sbi, old_blkaddr, -1);
 	}
 
@@ -3581,7 +3579,7 @@ void f2fs_wait_on_block_writeback_range(struct inode *inode, block_t blkaddr,
 	for (i = 0; i < len; i++)
 		f2fs_wait_on_block_writeback(inode, blkaddr + i);
 
-	invalidate_mapping_pages(META_MAPPING(sbi), blkaddr, blkaddr + len - 1);
+	f2fs_truncate_meta_inode_pages(sbi, blkaddr, len);
 }
 
 static int read_compacted_summaries(struct f2fs_sb_info *sbi)
