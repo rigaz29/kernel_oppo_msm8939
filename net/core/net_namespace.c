@@ -40,12 +40,15 @@ static unsigned int max_gen_ptrs = INITIAL_NET_GEN_PTRS;
 
 static struct net_generic *net_alloc_generic(void)
 {
+	unsigned int gen_ptrs = ACCESS_ONCE(max_gen_ptrs);
 	struct net_generic *ng;
-	size_t generic_size = offsetof(struct net_generic, ptr[max_gen_ptrs]);
+	size_t generic_size;
+
+	generic_size = offsetof(struct net_generic, ptr[gen_ptrs]);
 
 	ng = kzalloc(generic_size, GFP_KERNEL);
 	if (ng)
-		ng->len = max_gen_ptrs;
+		ng->len = gen_ptrs;
 
 	return ng;
 }
@@ -520,7 +523,10 @@ again:
 			}
 			return error;
 		}
-		max_gen_ptrs = max_t(unsigned int, max_gen_ptrs, *ops->id);
+		/* This does not require ACCESS_ONCE() as writers already hold
+		 * net_mutex. But it is needed to protect net_alloc_generic.
+		 */
+		ACCESS_ONCE(max_gen_ptrs) = max_t(unsigned int, max_gen_ptrs, *ops->id);
 	}
 	error = __register_pernet_operations(list, ops);
 	if (error) {
