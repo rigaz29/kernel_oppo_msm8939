@@ -179,7 +179,7 @@ int ip6_output(struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev;
 	struct inet6_dev *idev = ip6_dst_idev(skb_dst(skb));
-	if (unlikely(idev->cnf.disable_ipv6)) {
+	if (unlikely(!idev || idev->cnf.disable_ipv6)) {
 		IP6_INC_STATS(dev_net(dev), idev,
 			      IPSTATS_MIB_OUTDISCARDS);
 		kfree_skb(skb);
