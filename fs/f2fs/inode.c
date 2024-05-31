@@ -263,17 +263,22 @@ static bool sanity_check_inode(struct inode *inode, struct page *node_page)
 	}
 
 	if (F2FS_I(inode)->extent_tree) {
-		struct extent_info *ei = &F2FS_I(inode)->extent_tree->largest;
+		struct extent_info ei;
 
-		if (ei->len &&
-			(!f2fs_is_valid_blkaddr(sbi, ei->blk,
+		/*
+		 * Check the on-disk largest extent rather than et->largest,
+		 * which the extent shrinker may change under us.
+		 */
+		get_extent_info(&ei, &F2FS_INODE(node_page)->i_ext);
+		if (ei.len &&
+			(!f2fs_is_valid_blkaddr(sbi, ei.blk,
 						DATA_GENERIC_ENHANCE) ||
-			!f2fs_is_valid_blkaddr(sbi, ei->blk + ei->len - 1,
+			!f2fs_is_valid_blkaddr(sbi, ei.blk + ei.len - 1,
 						DATA_GENERIC_ENHANCE))) {
 			set_sbi_flag(sbi, SBI_NEED_FSCK);
 			f2fs_warn(sbi, "%s: inode (ino=%lx) extent info [%u, %u, %u] is incorrect, run fsck to fix",
 				  __func__, inode->i_ino,
-				  ei->blk, ei->fofs, ei->len);
+				  ei.blk, ei.fofs, ei.len);
 			return false;
 		}
 	}
