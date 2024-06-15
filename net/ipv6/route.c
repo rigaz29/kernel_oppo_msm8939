@@ -502,6 +502,8 @@ static void rt6_probe(struct rt6_info *rt)
 	 */
 	if (!rt || !(rt->rt6i_flags & RTF_GATEWAY))
 		return;
+	if (!rt->rt6i_idev)
+		return;
 	rcu_read_lock_bh();
 	neigh = __ipv6_neigh_lookup_noref(rt->dst.dev, &rt->rt6i_gateway);
 	if (neigh) {
