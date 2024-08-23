@@ -320,6 +320,9 @@ int __ethtool_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	if (!dev->ethtool_ops->get_settings)
 		return -EOPNOTSUPP;
 
+	if (!netif_device_present(dev))
+		return -ENODEV;
+
 	memset(cmd, 0, sizeof(struct ethtool_cmd));
 	cmd->cmd = ETHTOOL_GSET;
 	return dev->ethtool_ops->get_settings(dev, cmd);
