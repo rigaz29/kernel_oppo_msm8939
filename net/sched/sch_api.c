@@ -504,7 +504,6 @@ out:
 		pkt_len = 1;
 	qdisc_skb_cb(skb)->pkt_len = pkt_len;
 }
-EXPORT_SYMBOL(__qdisc_calculate_pkt_len);
 
 void qdisc_warn_nonwc(char *txt, struct Qdisc *qdisc)
 {
@@ -787,6 +786,11 @@ skip:
 			dev_activate(dev);
 	} else {
 		const struct Qdisc_class_ops *cops = parent->ops->cl_ops;
+
+		if (new &&
+		    !(parent->flags & TCQ_F_MQROOT) &&
+		    rcu_access_pointer(new->stab))
+			return -EINVAL;
 
 		err = -EOPNOTSUPP;
 		if (cops && cops->graft) {
