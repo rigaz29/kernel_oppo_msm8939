@@ -376,6 +376,11 @@ static int flow_change(struct net *net, struct sk_buff *in_skb,
 	if (err < 0)
 		return err;
 
+	/* NLA_POLICY_MAX(NLA_U32, 31) upstream; no policy ranges in 3.10 */
+	if (tb[TCA_FLOW_RSHIFT] &&
+	    nla_get_u32(tb[TCA_FLOW_RSHIFT]) > 31 /* BITS_PER_U32 - 1 */)
+		return -EINVAL;
+
 	if (tb[TCA_FLOW_BASECLASS]) {
 		baseclass = nla_get_u32(tb[TCA_FLOW_BASECLASS]);
 		if (TC_H_MIN(baseclass) == 0)
