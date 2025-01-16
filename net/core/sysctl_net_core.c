@@ -21,6 +21,7 @@
 #include <net/net_ratelimit.h>
 
 static int zero = 0;
+static int one = 1;
 static int ushort_max = USHRT_MAX;
 static int min_sndbuf = SOCK_MIN_SNDBUF;
 static int min_rcvbuf = SOCK_MIN_RCVBUF;
@@ -129,7 +130,8 @@ static struct ctl_table net_core_table[] = {
 		.data		= &weight_p,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &one,
 	},
 	{
 		.procname	= "netdev_max_backlog",
