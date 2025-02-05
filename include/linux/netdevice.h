@@ -1424,6 +1424,16 @@ struct net *dev_net(const struct net_device *dev)
 }
 
 static inline
+struct net *dev_net_rcu(const struct net_device *dev)
+{
+#ifdef CONFIG_NET_NS
+	return rcu_dereference(dev->nd_net);
+#else
+	return &init_net;
+#endif
+}
+
+static inline
 void dev_net_set(struct net_device *dev, struct net *net)
 {
 #ifdef CONFIG_NET_NS
