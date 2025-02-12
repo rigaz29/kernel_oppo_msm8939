@@ -1371,26 +1371,31 @@ static void ip6_mc_hdr(struct sock *sk, struct sk_buff *skb,
 static struct sk_buff *mld_newpack(struct inet6_dev *idev, int size)
 {
 	struct net_device *dev = idev->dev;
-	struct net *net = dev_net(dev);
-	struct sock *sk = net->ipv6.igmp_sk;
 	struct sk_buff *skb;
 	struct mld2_report *pmr;
 	struct in6_addr addr_buf;
 	const struct in6_addr *saddr;
 	int hlen = LL_RESERVED_SPACE(dev);
 	int tlen = dev->needed_tailroom;
-	int err;
+	struct sock *sk;
+	struct net *net;
 	u8 ra[8] = { IPPROTO_ICMPV6, 0,
 		     IPV6_TLV_ROUTERALERT, 2, 0, 0,
 		     IPV6_TLV_PADN, 0 };
 
 	/* we assume size > sizeof(ra) here */
 	size += hlen + tlen;
-	skb = sock_alloc_send_skb(sk, size, 1, &err);
+	skb = alloc_skb(size, GFP_ATOMIC);
 	if (!skb)
 		return NULL;
 
 	skb_reserve(skb, hlen);
+
+	rcu_read_lock();
+
+	net = dev_net_rcu(dev);
+	sk = net->ipv6.igmp_sk;
+	skb_set_owner_w(skb, sk);
 
 	if (__ipv6_get_lladdr(idev, &addr_buf, IFA_F_TENTATIVE)) {
 		/* <draft-ietf-magma-mld-source-05.txt>:
@@ -1402,6 +1407,8 @@ static struct sk_buff *mld_newpack(struct inet6_dev *idev, int size)
 		saddr = &addr_buf;
 
 	ip6_mc_hdr(sk, skb, dev, saddr, &mld2_all_mcr, NEXTHDR_HOP, 0);
+
+	rcu_read_unlock();
 
 	memcpy(skb_put(skb, sizeof(ra)), ra, sizeof(ra));
 
