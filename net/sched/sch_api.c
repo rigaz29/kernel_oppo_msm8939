@@ -255,11 +255,11 @@ static struct Qdisc *qdisc_leaf(struct Qdisc *p, u32 classid)
 	const struct Qdisc_class_ops *cops = p->ops->cl_ops;
 
 	if (cops == NULL)
-		return NULL;
+		return ERR_PTR(-EOPNOTSUPP);
 	cl = cops->get(p, classid);
 
 	if (cl == 0)
-		return NULL;
+		return ERR_PTR(-ENOENT);
 	leaf = cops->leaf(p, cl);
 	cops->put(p, cl);
 	return leaf;
@@ -1055,6 +1055,8 @@ static int tc_get_qdisc(struct sk_buff *skb, struct nlmsghdr *n)
 		} else {
 			q = dev->qdisc;
 		}
+		if (IS_ERR(q))
+			return PTR_ERR(q);
 		if (!q)
 			return -ENOENT;
 
@@ -1154,6 +1156,8 @@ replay:
 				if (!p)
 					return -ENOENT;
 				q = qdisc_leaf(p, clid);
+				if (IS_ERR(q))
+					return PTR_ERR(q);
 			} else if (dev_ingress_queue_create(dev)) {
 				q = dev_ingress_queue(dev)->qdisc_sleeping;
 			}
