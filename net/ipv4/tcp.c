@@ -2347,6 +2347,10 @@ int tcp_disconnect(struct sock *sk, int flags)
 	dst_release(sk->sk_rx_dst);
 	sk->sk_rx_dst = NULL;
 
+	/* Clean up fastopen related fields */
+	if (tp->fastopen_rsk)
+		reqsk_fastopen_remove(sk, tp->fastopen_rsk, false);
+
 	WARN_ON(inet->inet_num && !icsk->icsk_bind_hash);
 
 	sk->sk_error_report(sk);
