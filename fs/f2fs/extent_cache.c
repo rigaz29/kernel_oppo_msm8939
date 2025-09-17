@@ -73,8 +73,12 @@ struct rb_node **f2fs_lookup_rb_tree_for_insert(struct f2fs_sb_info *sbi,
 			p = &(*p)->rb_left;
 		else if (ofs >= re->ofs + re->len)
 			p = &(*p)->rb_right;
-		else
+		else {
+			f2fs_err(sbi, "%s: corrupted rb tree, entry [%u, %u], ofs to insert %u",
+				 __func__, re->ofs, re->len, ofs);
 			f2fs_bug_on(sbi, 1);
+			return NULL;
+		}
 	}
 
 	return p;
@@ -464,6 +468,8 @@ static struct extent_node *__insert_extent_tree(struct f2fs_sb_info *sbi,
 	}
 
 	p = f2fs_lookup_rb_tree_for_insert(sbi, &et->root, &parent, ei->fofs);
+	if (!p)
+		return NULL;
 do_insert:
 	en = __attach_extent_node(sbi, et, ei, parent, p);
 	if (!en)
