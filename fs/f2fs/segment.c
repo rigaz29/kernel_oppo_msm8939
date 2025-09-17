@@ -1376,6 +1376,8 @@ static struct discard_cmd *__insert_discard_tree(struct f2fs_sb_info *sbi,
 	}
 
 	p = f2fs_lookup_rb_tree_for_insert(sbi, &dcc->root, &parent, lstart);
+	if (!p)
+		return NULL;
 do_insert:
 	dc = __attach_discard_cmd(sbi, bdev, lstart, start, len, parent, p);
 	if (!dc)
