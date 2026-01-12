@@ -1468,9 +1468,9 @@ void f2fs_ra_node_page(struct f2fs_sb_info *sbi, nid_t nid)
 	f2fs_put_page(apage, err ? 1 : 0);
 }
 
-static int sanity_check_node_footer(struct f2fs_sb_info *sbi,
+int f2fs_sanity_check_node_footer(struct f2fs_sb_info *sbi,
 					struct page *page, pgoff_t nid,
-					enum node_type ntype)
+					enum node_type ntype, bool in_irq)
 {
 	if (unlikely(nid != nid_of_node(page)))
 		goto out_err;
@@ -1493,13 +1493,18 @@ static int sanity_check_node_footer(struct f2fs_sb_info *sbi,
 	}
 	return 0;
 out_err:
-	f2fs_warn(sbi, "inconsistent node block, node_type:%d, nid:%lu, "
-		  "node_footer[nid:%u,ino:%u,ofs:%u,cpver:%llu,blkaddr:%u]",
-		  ntype, nid, nid_of_node(page), ino_of_node(page),
-		  ofs_of_node(page), cpver_of_node(page),
-		  next_blkaddr_of_node(page));
 	set_sbi_flag(sbi, SBI_NEED_FSCK);
-	f2fs_handle_error(sbi, ERROR_INCONSISTENT_FOOTER);
+	f2fs_warn_ratelimited(sbi, "inconsistent node block, node_type:%d, nid:%lu, "
+		"node_footer[nid:%u,ino:%u,ofs:%u,cpver:%llu,blkaddr:%u]",
+		ntype, nid, nid_of_node(page), ino_of_node(page),
+		ofs_of_node(page), cpver_of_node(page),
+		next_blkaddr_of_node(page));
+
+	/* f2fs_handle_error() writes the superblock here, so not from irq */
+	if (in_irq)
+		f2fs_handle_error_async(sbi, ERROR_INCONSISTENT_FOOTER);
+	else
+		f2fs_handle_error(sbi, ERROR_INCONSISTENT_FOOTER);
 	return -EFSCORRUPTED;
 }
 
@@ -1547,7 +1552,7 @@ repeat:
 		goto out_err;
 	}
 page_hit:
-	err = sanity_check_node_footer(sbi, page, nid, ntype);
+	err = f2fs_sanity_check_node_footer(sbi, page, nid, ntype, false);
 	if (!err)
 		return page;
 out_err:
@@ -1724,8 +1729,8 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	/* get old block addr of this node page */
 	nid = nid_of_node(page);
 
-	if (sanity_check_node_footer(sbi, page, page->index,
-					NODE_TYPE_REGULAR)) {
+	if (f2fs_sanity_check_node_footer(sbi, page, page->index,
+					NODE_TYPE_REGULAR, false)) {
 		f2fs_handle_critical_error(sbi, STOP_CP_REASON_CORRUPTED_NID,
 								false);
 		goto redirty_out;
