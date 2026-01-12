@@ -136,6 +136,18 @@ static void f2fs_finish_read_bio(struct bio *bio, bool in_task)
 			continue;
 		}
 
+		/*
+		 * Only a node page that was read fine has a footer worth
+		 * checking; a failed read is reported as such below.
+		 */
+		if (F2FS_P_SB(page)->node_inode &&
+			page->mapping == NODE_MAPPING(F2FS_P_SB(page)) &&
+			test_bit(BIO_UPTODATE, &bio->bi_flags) &&
+			!PageError(page) &&
+			f2fs_sanity_check_node_footer(F2FS_P_SB(page),
+				page, page->index, NODE_TYPE_REGULAR, true))
+			clear_bit(BIO_UPTODATE, &bio->bi_flags);
+
 		/* PG_error was set if decryption or verity failed. */
 		if (!test_bit(BIO_UPTODATE, &bio->bi_flags) || PageError(page)) {
 			ClearPageUptodate(page);
@@ -336,8 +348,11 @@ static void f2fs_write_end_io(struct bio *bio, int err)
 						STOP_CP_REASON_WRITE_FAIL);
 		}
 
-		f2fs_bug_on(sbi, page->mapping == NODE_MAPPING(sbi) &&
-					page->index != nid_of_node(page));
+		if (page->mapping == NODE_MAPPING(sbi)) {
+			f2fs_sanity_check_node_footer(sbi, page,
+				page->index, NODE_TYPE_REGULAR, true);
+			f2fs_bug_on(sbi, page->index != nid_of_node(page));
+		}
 		if (f2fs_in_warm_node_list(sbi, page))
 			f2fs_del_fsync_node_entry(sbi, page);
 
