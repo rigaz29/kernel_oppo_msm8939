@@ -56,6 +56,7 @@ static int xfrm6_get_saddr(struct net *net,
 	struct dst_entry *dst;
 	struct net_device *dev;
 	struct inet6_dev *idev;
+	int err;
 
 	dst = xfrm6_dst_lookup(net, 0, NULL, daddr);
 	if (IS_ERR(dst))
@@ -67,10 +68,12 @@ static int xfrm6_get_saddr(struct net *net,
 		return -EHOSTUNREACH;
 	}
 	dev = idev->dev;
-	ipv6_dev_get_saddr(dev_net(dev), dev,
-			   (struct in6_addr *)&daddr->a6, 0,
-			   (struct in6_addr *)&saddr->a6);
+	err = ipv6_dev_get_saddr(dev_net(dev), dev,
+				 (struct in6_addr *)&daddr->a6, 0,
+				 (struct in6_addr *)&saddr->a6);
 	dst_release(dst);
+	if (err)
+		return -EHOSTUNREACH;
 	return 0;
 }
 
