@@ -934,6 +934,7 @@ EXPORT_SYMBOL_GPL(cdc_ncm_rx_verify_nth16);
 /* verify NDP header and return number of datagrams, or negative error */
 int cdc_ncm_rx_verify_ndp16(struct sk_buff *skb_in, int ndpoffset)
 {
+	size_t ndp_len;
 	struct usb_cdc_ncm_ndp16 *ndp16;
 	int ret = -EINVAL;
 
@@ -954,8 +955,9 @@ int cdc_ncm_rx_verify_ndp16(struct sk_buff *skb_in, int ndpoffset)
 					sizeof(struct usb_cdc_ncm_dpe16));
 	ret--; /* we process NDP entries except for the last one */
 
-	if ((sizeof(struct usb_cdc_ncm_ndp16) + ret * (sizeof(struct usb_cdc_ncm_dpe16))) >
-								skb_in->len) {
+	ndp_len = sizeof(struct usb_cdc_ncm_ndp16) +
+		  ret * sizeof(struct usb_cdc_ncm_dpe16);
+	if (ndpoffset + ndp_len > skb_in->len) {
 		pr_debug("Invalid nframes = %d\n", ret);
 		ret = -EINVAL;
 	}
