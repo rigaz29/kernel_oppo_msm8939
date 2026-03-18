@@ -1693,6 +1693,10 @@ int f2fs_move_node_page(struct page *node_page, int gc_type)
 			goto out_page;
 		}
 
+		/* GC moves the block; it is not an fsync write */
+		set_fsync_mark(node_page, 0);
+		set_dentry_mark(node_page, 0);
+
 		if (__write_node_page(node_page, false, NULL,
 					&wbc, false, FS_GC_NODE_IO, NULL)) {
 			err = -EAGAIN;
