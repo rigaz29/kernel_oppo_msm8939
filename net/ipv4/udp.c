@@ -193,6 +193,22 @@ static int udp_lib_lport_inuse2(struct net *net, __u16 num,
 	return res;
 }
 
+static bool inet_use_hash2_on_bind(const struct sock *sk)
+{
+#if IS_ENABLED(CONFIG_IPV6)
+	if (sk->sk_family == AF_INET6) {
+		const struct in6_addr *addr = &inet6_sk(sk)->rcv_saddr;
+
+		if (ipv6_addr_any(addr))
+			return false;
+
+		if (!ipv6_addr_v4mapped(addr))
+			return true;
+	}
+#endif
+	return inet_sk(sk)->inet_rcv_saddr != htonl(INADDR_ANY);
+}
+
 /**
  *  udp_lib_get_port  -  UDP/-Lite port lookup for IPv4 and IPv6
  *
@@ -254,7 +270,7 @@ int udp_lib_get_port(struct sock *sk, unsigned short snum,
 	} else {
 		hslot = udp_hashslot(udptable, net, snum);
 		spin_lock_bh(&hslot->lock);
-		if (hslot->count > 10) {
+		if (inet_use_hash2_on_bind(sk) && hslot->count > 10) {
 			int exist;
 			unsigned int slot2 = udp_sk(sk)->udp_portaddr_hash ^ snum;
 
