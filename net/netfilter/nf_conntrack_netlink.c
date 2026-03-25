@@ -2833,6 +2833,11 @@ ctnetlink_create_expect(struct net *net, u16 zone,
 		err = -ENOMEM;
 		goto out;
 	}
+	if (cda[CTA_EXPECT_FLAGS] &&
+	    ntohl(nla_get_be32(cda[CTA_EXPECT_FLAGS])) & ~NF_CT_EXPECT_MASK) {
+		err = -EINVAL;
+		goto err_out;
+	}
 	help = nfct_help(ct);
 	if (!help) {
 		if (!cda[CTA_EXPECT_TIMEOUT]) {
