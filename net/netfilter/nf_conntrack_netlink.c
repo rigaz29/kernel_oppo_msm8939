@@ -2852,6 +2852,12 @@ ctnetlink_create_expect(struct net *net, u16 zone,
 						 exp, u3);
 		if (err < 0)
 			goto err_out;
+#if IS_ENABLED(CONFIG_NF_NAT)
+	} else {
+		memset(&exp->saved_addr, 0, sizeof(exp->saved_addr));
+		memset(&exp->saved_proto, 0, sizeof(exp->saved_proto));
+		exp->dir = 0;
+#endif
 	}
 	err = nf_ct_expect_related_report(exp, portid, report);
 err_out:
