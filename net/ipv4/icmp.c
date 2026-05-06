@@ -412,6 +412,8 @@ static struct rtable *icmp_route_lookup(struct net *net,
 	if (!IS_ERR(rt)) {
 		if (rt != rt2)
 			return rt;
+		if (inet_addr_type(net, fl4->daddr) == RTN_LOCAL)
+			return rt;
 	} else if (PTR_ERR(rt) == -EPERM) {
 		rt = NULL;
 	} else
