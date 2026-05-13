@@ -1900,6 +1900,8 @@ int xfrm_state_mtu(struct xfrm_state *x, int mtu)
 	if (x->km.state == XFRM_STATE_VALID &&
 	    x->type && x->type->get_mtu)
 		res = x->type->get_mtu(x, mtu);
+	else if (mtu <= x->props.header_len)
+		res = 1;
 	else
 		res = mtu - x->props.header_len;
 	spin_unlock_bh(&x->lock);
