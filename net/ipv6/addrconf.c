@@ -2334,6 +2334,8 @@ ok:
 			unsigned long now;
 #ifdef CONFIG_IPV6_PRIVACY
 			struct inet6_ifaddr *ift;
+			u32 orig_prefered_lft;
+			bool reset_done = false;
 #endif
 			u32 stored_lft;
 
@@ -2399,6 +2401,7 @@ ok:
 
 #ifdef CONFIG_IPV6_PRIVACY
 			read_lock_bh(&in6_dev->lock);
+			orig_prefered_lft = prefered_lft;
 			/* update all temporary addresses in the list */
 			list_for_each_entry(ift, &in6_dev->tempaddr_list,
 					    tmp_list) {
@@ -2437,6 +2440,11 @@ ok:
 					prefered_lft = max_prefered;
 
 				spin_lock(&ift->lock);
+				/* the first match is the most recent temp address */
+				if (!reset_done && orig_prefered_lft > 0) {
+					ift->regen_count = 0;
+					reset_done = true;
+				}
 				flags = ift->flags;
 				ift->valid_lft = valid_lft;
 				ift->prefered_lft = prefered_lft;
