@@ -886,6 +886,13 @@ set_rcvbuf:
 		break;
 
 	case SO_ATTACH_FILTER:
+		if ((sk->sk_family == AF_INET || sk->sk_family == AF_INET6) &&
+		    sk->sk_type == SOCK_STREAM &&
+		    sk->sk_protocol == IPPROTO_TCP &&
+		    !ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN)) {
+			ret = -EPERM;
+			break;
+		}
 		ret = -EINVAL;
 		if (optlen == sizeof(struct sock_fprog)) {
 			struct sock_fprog fprog;
