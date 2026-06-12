@@ -104,6 +104,7 @@ EXPORT_SYMBOL(xfrm_prepare_input);
 
 int xfrm_input(struct sk_buff *skb, int nexthdr, __be32 spi, int encap_type)
 {
+	struct net_device *dev = skb->dev;
 	struct net *net = dev_net(skb->dev);
 	int err;
 	__be32 seq;
@@ -191,16 +192,18 @@ int xfrm_input(struct sk_buff *skb, int nexthdr, __be32 spi, int encap_type)
 		XFRM_SKB_CB(skb)->seq.input.hi = seq_hi;
 
 		skb_dst_force(skb);
-		dev_hold(skb->dev);
+		dev_hold(dev);
 
 		nexthdr = x->type->input(x, skb);
 
-		if (nexthdr == -EINPROGRESS)
+		if (nexthdr == -EINPROGRESS) {
+			if (async)
+				dev_put(dev);
 			return 0;
+		}
 
+		dev_put(dev);
 resume:
-		dev_put(skb->dev);
-
 		spin_lock(&x->lock);
 		if (nexthdr <= 0) {
 			if (nexthdr == -EBADMSG) {
@@ -266,14 +269,21 @@ resume:
 	if (decaps) {
 		skb_dst_drop(skb);
 		netif_rx(skb);
+		if (async)
+			dev_put(dev);
 		return 0;
 	} else {
-		return x->inner_mode->afinfo->transport_finish(skb, async);
+		err = x->inner_mode->afinfo->transport_finish(skb, async);
+		if (async)
+			dev_put(dev);
+		return err;
 	}
 
 drop_unlock:
 	spin_unlock(&x->lock);
 drop:
+	if (async)
+		dev_put(dev);
 	kfree_skb(skb);
 	return 0;
 }
