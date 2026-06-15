@@ -28,6 +28,7 @@
 
 static int zero;
 static int one = 1;
+static int tcp_max_reordering = TCP_MAX_REORDERING;
 static int four = 4;
 static int gso_max_segs = GSO_MAX_SEGS;
 static int tcp_retr1_max = 255;
@@ -562,7 +563,9 @@ static struct ctl_table ipv4_table[] = {
 		.data		= &sysctl_tcp_reordering,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &one,
+		.extra2		= &tcp_max_reordering,
 	},
 	{
 		.procname	= "tcp_dsack",
