@@ -132,15 +132,15 @@ static bool opchg_soc_reduce_slowly_when_1(struct opchg_charger *chip)
 		return 0;
 
 	batt_vol = opchg_get_prop_battery_voltage_now(chip)/1000;
-	if(batt_vol < 3410)
+	if(batt_vol < 3450)
 		reduce_count++;
 	else
 		reduce_count = 0;
 	pr_err("%s batt_vol:%d,reduce_count:%d\n",__func__,batt_vol,reduce_count);
-	if(reduce_count < 5){
+	if(reduce_count < 8){
 		return 0;
 	} else {
-		reduce_count = 5;
+		reduce_count = 8;
 		return 1;
 	}
 }
@@ -257,7 +257,10 @@ int opchg_get_prop_batt_capacity_from_bms(struct opchg_charger *chip)
 	}
 
 	if(chip->bat_volt_check_point <= 2){
-		chip->ocv_uv = opchg_backup_ocv_soc(2);
+		/* Backup a safe SOC (5) to PMIC SRAM so the bootloader
+		 * never sees a critically low value that would prevent
+		 * off-mode charging from starting after a full discharge. */
+		chip->ocv_uv = opchg_backup_ocv_soc(5);
 	} else {
 		chip->ocv_uv = opchg_backup_ocv_soc(chip->bat_volt_check_point);
 	}
@@ -376,7 +379,10 @@ int opchg_get_prop_batt_capacity_from_bms_bq24157(struct opchg_charger *chip)
 	}
 
 	if(chip->bat_volt_check_point <= 2){
-		chip->ocv_uv = opchg_backup_ocv_soc(2);
+		/* Backup a safe SOC (5) to PMIC SRAM so the bootloader
+		 * never sees a critically low value that would prevent
+		 * off-mode charging from starting after a full discharge. */
+		chip->ocv_uv = opchg_backup_ocv_soc(5);
 	} else {
 #if 0
 		if(chip->bat_volt_check_point == 100 && chip->soc_bms > 90)

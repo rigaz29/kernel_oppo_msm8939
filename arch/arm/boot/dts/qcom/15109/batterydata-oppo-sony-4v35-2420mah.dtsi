@@ -16,7 +16,7 @@ qcom,oppo-4v35-2420mah-data {
 	qcom,rbatt-capacitive-mohm = <50>;
 	qcom,flat-ocv-threshold-uv = <3800000>;
 	qcom,max-voltage-uv = <4350000>;
-	qcom,v-cutoff-uv = <3400000>;
+	qcom,v-cutoff-uv = <3450000>;
 	qcom,batt-id-kohm = <47>;
 	qcom,battery-type = "oppo_4v35_2420mah_sony";
 

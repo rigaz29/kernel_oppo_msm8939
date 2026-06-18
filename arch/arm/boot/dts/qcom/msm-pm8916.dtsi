@@ -268,7 +268,7 @@
 			#size-cells = <1>;
 			status = "disabled";
 
-			qcom,v-cutoff-uv = <3400000>;
+			qcom,v-cutoff-uv = <3450000>;
 			qcom,max-voltage-uv = <4200000>;
 			qcom,r-conn-mohm = <0>;
 			qcom,shutdown-soc-valid-limit = <100>;
