@@ -754,6 +754,7 @@ void wiphy_unregister(struct wiphy *wiphy)
 	mutex_unlock(&cfg80211_mutex);
 
 	flush_work(&rdev->scan_done_wk);
+	cancel_work_sync(&rdev->sched_scan_results_wk);
 	cancel_work_sync(&rdev->rfkill_sync);
 	cancel_work_sync(&rdev->conn_work);
 	flush_work(&rdev->event_work);
