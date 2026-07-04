@@ -76,7 +76,7 @@ int xfrm6_input_addr(struct sk_buff *skb, xfrm_address_t *daddr,
 		skb->sp = sp;
 	}
 
-	if (1 + skb->sp->len == XFRM_MAX_DEPTH) {
+	if (skb->sp->len >= XFRM_MAX_DEPTH) {
 		XFRM_INC_STATS(net, LINUX_MIB_XFRMINBUFFERERROR);
 		goto drop;
 	}
