@@ -345,19 +345,15 @@
 	};
 	
 	qcom,iommu-ctx@1e25000 {
-				/delete-property/ qcom,report-error-on-fault;
 	};
 	
 	qcom,iommu-ctx@1e33000 {
-			/delete-property/	qcom,report-error-on-fault;
 	};
 
 	qcom,iommu-ctx@1e34000 {
-			/delete-property/	qcom,report-error-on-fault;
 	};
 	
 	qcom,iommu-ctx@1e36000 {
-			/delete-property/	qcom,report-error-on-fault;
 	};
 
 	qcom,smem@86300000 {
