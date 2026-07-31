@@ -17,7 +17,7 @@
 			qcom,rbatt-capacitive-mohm = <0x1e>;
 			qcom,flat-ocv-threshold-uv = <0x3abf10>;
 			qcom,max-voltage-uv = <0x432380>;
-			qcom,v-cutoff-uv = <0x33e140>;
+			qcom,v-cutoff-uv = <3450000>;
 			qcom,batt-id-kohm = <0x2f>;
 			qcom,battery-type = "oppo_4400_2550mah_sdi";
 

@@ -212,7 +212,7 @@
 			panel_id0 = <&msm_gpio 109 0x0>;
 			panel_id1 = <&msm_gpio 114 0x0>;
 			panel_id2 = <&msm_gpio 119 0x0>;
-            status = "disable";
+            status = "disabled";
 		};
 	};
 

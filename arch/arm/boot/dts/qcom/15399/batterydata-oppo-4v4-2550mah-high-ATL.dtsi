@@ -17,7 +17,7 @@
 			qcom,rbatt-capacitive-mohm = <30>;
 			qcom,flat-ocv-threshold-uv = <3850000>;
 			qcom,max-voltage-uv = <4400000>;
-			qcom,v-cutoff-uv = <3400000>;
+			qcom,v-cutoff-uv = <3450000>;
 			qcom,batt-id-kohm = <47>;
 			qcom,battery-type = "oppo_4400_2550mah_ATL";
 
