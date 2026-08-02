@@ -85,6 +85,7 @@ else
 dtb-$(CONFIG_ARCH_MSM8916) += msm8916-cdp.dtb \
 	msm8916-cdp-smb1360.dtb \
 	msm8916-mtp.dtb \
+	msm8916-mtp-15399.dtb \
 	msm8916-mtp-smb1360.dtb \
 	msm8916-qrd-skuh.dtb \
 	msm8916-qrd-skuhf.dtb \
