@@ -298,11 +298,22 @@ CONFIG_SENSORS_AKM8963=y
 # CONFIG_DEVKMEM is not set
 CONFIG_SERIAL_MSM_HS=y
 CONFIG_SERIAL_MSM_SMD=y
-# Debug UART (ttyHSL0). Tanpa ini console=ttyHSL0 di BOARD_KERNEL_CMDLINE
-# menunjuk device yang tidak ada. Node DTS-nya (blsp1_uart2, serial@78b0000)
-# juga perlu di-enable — lihat msm8916-mtp-15399.dtsi.
+# Debug UART (ttyHSL0). Driver-nya dipertahankan supaya /dev/ttyHSL0 tersedia
+# dan node DTS blsp1_uart2 ada gunanya.
 CONFIG_SERIAL_MSM_HSL=y
-CONFIG_SERIAL_MSM_HSL_CONSOLE=y
+# Dukungan CONSOLE sengaja DIMATIKAN. Membuang console= dari cmdline saja tidak
+# cukup: printk.c:2615-2626 otomatis meng-CON_ENABLED console PERTAMA yang
+# mendaftar kalau cmdline tidak menyebut console= sama sekali, dan driver ini
+# memenuhi syaratnya (punya .setup dan .device, msm_serial_hs_lite.c:1533-1534).
+# Akibatnya /dev/console tetap hidup, "service console /system/bin/sh"
+# (init.rc:1053 "on init && property:ro.debuggable=1") tetap jalan, dan
+# ActivityManagerService.java:5648 terus menampilkan notifikasi
+# "Serial console enabled".
+# Tidak ada console lain yang mendaftar: CONFIG_VT mati, tanpa framebuffer
+# console, dan SERIAL_MSM_HS tidak punya dukungan console.
+# earlyprintk TIDAK terpengaruh — implementasinya di arch/arm64/kernel/
+# early_printk.c menulis langsung ke register UART, lepas dari driver ini.
+# CONFIG_SERIAL_MSM_HSL_CONSOLE is not set
 CONFIG_HW_RANDOM_MSM=y
 CONFIG_MSM_SMD_PKT=y
 CONFIG_I2C=y
