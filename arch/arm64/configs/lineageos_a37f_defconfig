@@ -603,11 +603,19 @@ CONFIG_NLS_ISO8859_1=y
 CONFIG_NLS_UTF8=y
 CONFIG_PRINTK_TIME=y
 CONFIG_MAGIC_SYSRQ=y
-# Register trace buffer. Node DTS qcom,msm-rtb (msm8916.dtsi:829) sudah ada
-# dengan qcom,rtb-size 0x100000. Tanpa opsi ini msm_rtb.filter di cmdline
-# diabaikan diam-diam.
-CONFIG_MSM_RTB=y
-CONFIG_MSM_RTB_SEPARATE_CPUS=y
+# Register trace buffer DIMATIKAN lagi setelah fase bring-up selesai.
+#
+# RTB mencatat setiap akses register driver (readl/writel), IRQ, dan context
+# switch ke ring buffer — biayanya melekat di SEMUA driver, sepanjang waktu,
+# bukan hanya saat mendiagnosis. Node DTS qcom,msm-rtb (msm8916.dtsi:829)
+# tetap ada dengan qcom,rtb-size 0x100000, jadi menyalakannya lagi cukup
+# mengubah baris ini plus mengembalikan msm_rtb.filter ke cmdline.
+#
+# Kemampuan mendiagnosis bootloop TIDAK hilang: rantai ramoops di bawah
+# (PSTORE_CONSOLE + PSTORE_RAM) utuh, dan /sys/fs/pstore/console-ramoops tetap
+# menyimpan log konsol dari boot yang gagal.
+# CONFIG_MSM_RTB is not set
+# CONFIG_MSM_RTB_SEPARATE_CPUS is not set
 # Ring buffer log subsistem QCOM (QMI/RIL/SMD) — dimatikan commit e8bab6d,
 # dinyalakan lagi untuk fase debug.
 CONFIG_IPC_LOGGING=y
