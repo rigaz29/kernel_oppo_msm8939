@@ -375,11 +375,17 @@
 	
 
 
-/*&blsp1_uart2 {
+/* Debug UART (ttyHSL0, serial@78b0000). Di-enable supaya console=ttyHSL0 di
+ * BOARD_KERNEL_CMDLINE benar-benar punya device — sebelumnya node ini
+ * dikomentari sementara cmdline tetap menyebut ttyHSL0, jadi tidak pernah ada
+ * console sama sekali. Pinctrl uart_console_sleep ada di
+ * msm8916-pinctrl.dtsi:147. Butuh CONFIG_SERIAL_MSM_HSL(_CONSOLE) di defconfig.
+ */
+&blsp1_uart2 {
 	status = "ok";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart_console_sleep>;
-};*/
+};
 
 &pm8916_gpios {
 	gpio@c100 { /* GPIO 2 */

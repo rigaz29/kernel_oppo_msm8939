@@ -298,6 +298,11 @@ CONFIG_SENSORS_AKM8963=y
 # CONFIG_DEVKMEM is not set
 CONFIG_SERIAL_MSM_HS=y
 CONFIG_SERIAL_MSM_SMD=y
+# Debug UART (ttyHSL0). Tanpa ini console=ttyHSL0 di BOARD_KERNEL_CMDLINE
+# menunjuk device yang tidak ada. Node DTS-nya (blsp1_uart2, serial@78b0000)
+# juga perlu di-enable — lihat msm8916-mtp-15399.dtsi.
+CONFIG_SERIAL_MSM_HSL=y
+CONFIG_SERIAL_MSM_HSL_CONSOLE=y
 CONFIG_HW_RANDOM_MSM=y
 CONFIG_MSM_SMD_PKT=y
 CONFIG_I2C=y
@@ -587,12 +592,21 @@ CONFIG_NLS_ISO8859_1=y
 CONFIG_NLS_UTF8=y
 CONFIG_PRINTK_TIME=y
 CONFIG_MAGIC_SYSRQ=y
+# Register trace buffer. Node DTS qcom,msm-rtb (msm8916.dtsi:829) sudah ada
+# dengan qcom,rtb-size 0x100000. Tanpa opsi ini msm_rtb.filter di cmdline
+# diabaikan diam-diam.
+CONFIG_MSM_RTB=y
+CONFIG_MSM_RTB_SEPARATE_CPUS=y
+# Ring buffer log subsistem QCOM (QMI/RIL/SMD) — dimatikan commit e8bab6d,
+# dinyalakan lagi untuk fase debug.
+CONFIG_IPC_LOGGING=y
+# Supaya pr_debug bisa dinyalakan saat runtime lewat
+# /sys/kernel/debug/dynamic_debug/control, tanpa rebuild kernel.
+CONFIG_DYNAMIC_DEBUG=y
 # CONFIG_SCHED_DEBUG is not set
 # CONFIG_SCHEDSTATS is not set
 # CONFIG_DEBUG_PREEMPT is not set
 # CONFIG_DEBUG_BUGVERBOSE is not set
-# CONFIG_IPC_LOGGING is not set
-# CONFIG_DYNAMIC_DEBUG is not set
 CONFIG_PANIC_ON_DATA_CORRUPTION=y
 CONFIG_KEYS=y
 CONFIG_ENCRYPTED_KEYS=y
