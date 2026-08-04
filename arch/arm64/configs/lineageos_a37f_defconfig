@@ -617,8 +617,12 @@ CONFIG_MAGIC_SYSRQ=y
 # CONFIG_MSM_RTB is not set
 # CONFIG_MSM_RTB_SEPARATE_CPUS is not set
 # Ring buffer log subsistem QCOM (QMI/RIL/SMD) — dimatikan commit e8bab6d,
-# dinyalakan lagi untuk fase debug.
-CONFIG_IPC_LOGGING=y
+# sempat dinyalakan lagi untuk fase debug RIL, lalu DIMATIKAN kembali setelah
+# RIL terbukti bekerja sampai ke modem (GET_CELL_INFO_LIST mengembalikan menara
+# nyata MCC 510/MNC 10). Tiap subsistem QCOM mengalokasikan ring buffer sendiri
+# dan menulisinya sepanjang waktu; tidak sepadan kalau tidak sedang menelusuri
+# masalah QMI. Nyalakan lagi kalau RIL/modem bermasalah.
+# CONFIG_IPC_LOGGING is not set
 # Supaya pr_debug bisa dinyalakan saat runtime lewat
 # /sys/kernel/debug/dynamic_debug/control, tanpa rebuild kernel.
 CONFIG_DYNAMIC_DEBUG=y
