@@ -1446,7 +1446,7 @@ page_hit:
 	set_sbi_flag(sbi, SBI_NEED_FSCK);
 	err = -EINVAL;
 out_err:
-	ClearPageUptodate(page);
+	clear_node_page_dirty(page);
 out_put_err:
 	/* ENOENT comes from read_node_page(), not an error. */
 	if (err != -ENOENT)
