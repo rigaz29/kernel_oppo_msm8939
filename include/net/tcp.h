@@ -653,6 +653,9 @@ static inline void tcp_fast_path_check(struct sock *sk)
 		tcp_fast_path_on(tp);
 }
 
+extern void tcp_reqsk_send_challenge_ack(struct sock *sk, struct sk_buff *skb,
+					 struct request_sock *req);
+
 /* Compute the actual rto_min value */
 static inline u32 tcp_rto_min(struct sock *sk)
 {
