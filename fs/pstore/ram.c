@@ -513,6 +513,8 @@ static int ramoops_probe(struct platform_device *pdev)
 
 	if (pdev->dev.of_node)
 		ramoops_of_init(pdev);
+	else if (dev_get_platdata(dev))
+		memcpy(pdata, dev_get_platdata(dev), sizeof(*pdata));
 
 	/* Only a single ramoops area allowed at a time, so fail extra
 	 * probes.
