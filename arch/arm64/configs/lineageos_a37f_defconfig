@@ -28,6 +28,23 @@ CONFIG_RD_BZIP2=y
 CONFIG_RD_LZMA=y
 CONFIG_CC_OPTIMIZE_FOR_SIZE=y
 CONFIG_PANIC_TIMEOUT=5
+# Deteksi task menggantung — menangkap init (atau proses mana pun) yang terblokir
+# di D state, misalnya macet mount atau I/O. Setelah timeout kernel panic, lalu
+# CONFIG_PANIC_TIMEOUT=5 di atas mereboot sendiri; jejaknya beserta STACK TRACE
+# task yang terblokir masuk kmsg -> tertangkap console-ramoops.
+#
+# Bergantung pada DEBUG_KERNEL, yang sudah =y di .config hasil build.
+#
+# BATASNYA: hanya D state (uninterruptible). init yang menunggu properti, socket,
+# atau futex ada di S state dan TIDAK tertangkap — untuk itu ada bootwatchdog.sh.
+# Dan panic mereboot ke boot NORMAL, bukan recovery.
+#
+# Timeout 90 detik dipilih agar menyala SEBELUM bootwatchdog (120 detik), supaya
+# kalau penyebabnya memang D state kita mendapat stack trace-nya, bukan sekadar
+# reboot. Cukup jauh di atas jendela I/O normal boot pertama.
+# Bisa diubah runtime: /proc/sys/kernel/hung_task_timeout_secs
+CONFIG_DETECT_HUNG_TASK=y
+CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=90
 CONFIG_KALLSYMS=y
 CONFIG_DEBUG_FS=y
 CONFIG_CC_STACKPROTECTOR=y
