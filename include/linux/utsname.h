@@ -6,6 +6,8 @@
 #include <linux/kref.h>
 #include <linux/nsproxy.h>
 #include <linux/err.h>
+#include <linux/string.h>
+#include <linux/kernel.h>
 #include <uapi/linux/utsname.h>
 
 enum uts_proc {
@@ -68,9 +70,50 @@ static inline void uts_proc_notify(enum uts_proc proc)
 }
 #endif
 
+#ifdef CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+static struct new_utsname utsname_spoofed;
+#endif
 static inline struct new_utsname *utsname(void)
 {
+#ifdef CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+#ifdef CONFIG_ANDROID_TREBLE_BYPASS_KERNEL_VERSION_CHECKS
+	if (!strcmp(current->comm, "system_server") ||
+	    !strcmp(current->comm, "zygote") ||
+	    !strcmp(current->comm, "bpfloader") ||
+	    !strcmp(current->comm, "netbpfload") ||
+	    !strcmp(current->comm, "perfetto") ||
+	    !strcmp(current->comm, "init"))
+	{
+#endif
+		const char *prefix;
+
+		if (!strcmp(current->comm, "bpfloader") ||
+		    !strcmp(current->comm, "netbpfload"))
+			prefix = CONFIG_ANDROID_TREBLE_SPOOF_BPF_KERNEL_VERSION_PREFIX;
+		else
+			prefix = CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION_PREFIX;
+
+		utsname_spoofed = current->nsproxy->uts_ns->name;
+
+		/*
+		 * Sumber dan tujuan adalah objek berbeda, jadi tidak tumpang
+		 * tindih. snprintf memotong bila hasilnya melebihi release[65];
+		 * hulunya (acroreiser) merakit lewat strcpy/strcat ke buffer
+		 * stack 64 byte, yang bisa meluap kalau release nyata panjang.
+		 * Untuk A37 hasilnya sekitar 40 karakter, jadi pemotongan tidak
+		 * pernah terjadi -- ini murni pengaman.
+		 */
+		snprintf(utsname_spoofed.release, sizeof(utsname_spoofed.release),
+			 "%s-%s", prefix, current->nsproxy->uts_ns->name.release);
+
+		return &utsname_spoofed;
+#ifdef CONFIG_ANDROID_TREBLE_BYPASS_KERNEL_VERSION_CHECKS
+	} else
+		return &current->nsproxy->uts_ns->name;
+#endif
+#else
 	return &current->nsproxy->uts_ns->name;
+#endif
 }
 
 static inline struct new_utsname *init_utsname(void)
