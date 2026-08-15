@@ -1832,4 +1832,62 @@ config ASN1
 	  inform it as to what tags are to be expected in a stream and what
 	  functions to call on what tags.
 
+menu "Android"
+
+config ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+	bool "Laporkan versi kernel palsu ke userspace"
+	default n
+	help
+	  ART memutuskan boleh-tidaknya memakai memfd_create() dari string
+	  uname(), bukan dari hasil syscall-nya:
+	  libartbase/base/memfd.cc menuntut rilis >= 3.17 dan mengembalikan
+	  ENOSYS bila lebih tua. Kernel ini SUDAH punya memfd_create
+	  (mm/shmem.c) tapi melaporkan 3.10, jadi jalur itu mati percuma.
+
+	  Menyalakan opsi ini membuat utsname() mengembalikan versi yang
+	  dipalsukan, sehingga pemeriksaan tersebut lolos.
+
+	  Diperlukan untuk LineageOS 22 (Android 15): berbeda dengan LOS 21,
+	  basis Ultra-Legacy-Hippeastrum tidak menyediakan fork art/ untuk
+	  lineage-22.2, jadi patch userspace yang dulu menutup lubang ini
+	  tidak lagi datang dari basis.
+
+config ANDROID_TREBLE_BYPASS_KERNEL_VERSION_CHECKS
+	bool "Palsukan hanya untuk proses yang membutuhkan"
+	depends on ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+	default n
+	help
+	  Batasi pemalsuan ke init, zygote, system_server, perfetto,
+	  bpfloader, dan netbpfload. Proses lain, termasuk /proc/version dan
+	  Settings -> About phone, tetap melihat versi kernel yang sebenarnya.
+
+	  Matikan hanya bila ada konsumen lain yang juga perlu dibohongi;
+	  memalsukan ke seluruh sistem memperbesar peluang userspace mencoba
+	  jalur kode yang menuntut fitur kernel yang tidak kita punya.
+
+config ANDROID_TREBLE_SPOOF_KERNEL_VERSION_PREFIX
+	string "Versi yang dilaporkan"
+	depends on ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+	default "3.17"
+	help
+	  Ditempelkan di depan rilis asli, dipisah tanda hubung.
+	  "3.17" adalah klaim minimal yang memuaskan gerbang ART.
+
+config ANDROID_TREBLE_SPOOF_BPF_KERNEL_VERSION_PREFIX
+	string "Versi yang dilaporkan ke pemuat BPF"
+	depends on ANDROID_TREBLE_SPOOF_KERNEL_VERSION
+	default "3.17"
+	help
+	  Dipakai khusus untuk bpfloader dan netbpfload, yang memilih varian
+	  program dan tipe map berdasarkan versi kernel.
+
+	  Kernel ini TIDAK punya eBPF sama sekali, jadi melaporkan versi
+	  tinggi tidak membeli apa pun: netbpfload tetap gagal di bpffs dan
+	  ditangani patch userspace BPF-less. Naikkan ke 4.19.325 HANYA bila
+	  stack eBPF benar-benar di-backport (PLAN-LOS22.md 4.3 Rute B);
+	  angka 236 pada REQUIRE(4, 19, 236) di NetBpfLoad.cpp adalah alasan
+	  sub-versinya tidak boleh 0.
+
+endmenu
+
 source "kernel/Kconfig.locks"
