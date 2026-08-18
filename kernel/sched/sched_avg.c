@@ -57,19 +57,35 @@ void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg)
 	for_each_possible_cpu(cpu) {
 		unsigned long flags;
 
+		u64 delta;
+
 		spin_lock_irqsave(&per_cpu(nr_lock, cpu), flags);
 		curr_time = sched_clock();
+
+		/*
+		 * A37: curr_time diambil ULANG di dalam loop ini, per CPU, sementara
+		 * sched_clock() antar-CPU BELUM tersinkron saat boot awal. Selisihnya
+		 * bisa negatif, dan karena tipenya u64 ia membungkus menjadi nilai
+		 * raksasa -- yang setelah div64_u64 dan cast ke int menjadi negatif,
+		 * lalu menyalakan BUG_ON di bawah dan mem-panic seluruh perangkat.
+		 *
+		 * Terekam di pstore (dmesg-ramoops): Oops pada detik 2,86 di
+		 * swapper/1 lewat rq_avg_timer_func -> update_running_avg ->
+		 * sched_get_nr_running_avg, saat CPU sekunder baru dinyalakan.
+		 * Gejalanya: logo OPPO -> restart mendadak -> logo OPPO lagi -> boot
+		 * normal. Sifatnya balapan, jadi tidak terjadi di setiap boot.
+		 */
+		delta = (curr_time > per_cpu(last_time, cpu))
+			? curr_time - per_cpu(last_time, cpu) : 0;
+
 		tmp_avg += per_cpu(nr_prod_sum, cpu);
-		tmp_avg += per_cpu(nr, cpu) *
-			(curr_time - per_cpu(last_time, cpu));
+		tmp_avg += per_cpu(nr, cpu) * delta;
 
 		tmp_big_avg += per_cpu(nr_big_prod_sum, cpu);
-		tmp_big_avg += nr_eligible_big_tasks(cpu) *
-			(curr_time - per_cpu(last_time, cpu));
+		tmp_big_avg += nr_eligible_big_tasks(cpu) * delta;
 
 		tmp_iowait += per_cpu(iowait_prod_sum, cpu);
-		tmp_iowait +=  nr_iowait_cpu(cpu) *
-			(curr_time - per_cpu(last_time, cpu));
+		tmp_iowait +=  nr_iowait_cpu(cpu) * delta;
 
 		per_cpu(last_time, cpu) = curr_time;
 
@@ -89,7 +105,26 @@ void sched_get_nr_running_avg(int *avg, int *iowait_avg, int *big_avg)
 
 	trace_sched_get_nr_running_avg(*avg, *big_avg, *iowait_avg);
 
-	BUG_ON(*avg < 0 || *big_avg < 0 || *iowait_avg < 0);
+	/*
+	 * A37: BUG_ON diturunkan menjadi WARN_ONCE + penjepitan.
+	 *
+	 * Penjepitan delta di atas menutup penyebab yang diketahui, tapi
+	 * mem-panic seluruh perangkat karena statistik rata-rata CPU keluar
+	 * negatif tetap tidak sebanding -- nilai ini hanya dipakai driver
+	 * core-control/boost untuk keputusan heuristik. Kalau sumber lain
+	 * membuatnya negatif lagi, perangkat tetap boot dan jejaknya terbaca
+	 * di dmesg alih-alih hilang bersama panic.
+	 */
+	if (unlikely(*avg < 0 || *big_avg < 0 || *iowait_avg < 0)) {
+		WARN_ONCE(1, "sched_get_nr_running_avg: nilai negatif avg=%d big=%d iowait=%d\n",
+			  *avg, *big_avg, *iowait_avg);
+		if (*avg < 0)
+			*avg = 0;
+		if (*big_avg < 0)
+			*big_avg = 0;
+		if (*iowait_avg < 0)
+			*iowait_avg = 0;
+	}
 	pr_debug("%s - avg:%d big_avg:%d iowait_avg:%d\n",
 				 __func__, *avg, *big_avg, *iowait_avg);
 }
