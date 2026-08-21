@@ -1971,7 +1971,8 @@ static void tpacket_destruct_skb(struct sk_buff *skb)
 
 static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 		void *frame, struct net_device *dev, int size_max,
-		__be16 proto, unsigned char *addr, int hlen)
+		__be16 proto, unsigned char *addr, int hlen,
+		int hard_header_len)
 {
 	union tpacket_uhdr ph;
 	int to_write, offset, len, nr_frags, len_max;
@@ -2043,22 +2044,22 @@ static int tpacket_fill_skb(struct packet_sock *po, struct sk_buff *skb,
 				NULL, tp_len);
 		if (unlikely(err < 0))
 			return -EINVAL;
-	} else if (dev->hard_header_len) {
+	} else if (hard_header_len) {
 		/* net device doesn't like empty head */
-		if (unlikely(tp_len <= dev->hard_header_len)) {
+		if (unlikely(tp_len <= hard_header_len)) {
 			pr_err("packet size is too short (%d < %d)\n",
-			       tp_len, dev->hard_header_len);
+			       tp_len, hard_header_len);
 			return -EINVAL;
 		}
 
-		skb_push(skb, dev->hard_header_len);
+		skb_push(skb, hard_header_len);
 		err = skb_store_bits(skb, 0, data,
-				dev->hard_header_len);
+				hard_header_len);
 		if (unlikely(err))
 			return err;
 
-		data += dev->hard_header_len;
-		to_write -= dev->hard_header_len;
+		data += hard_header_len;
+		to_write -= hard_header_len;
 	}
 
 	offset = offset_in_page(data);
@@ -2108,7 +2109,7 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	unsigned char *addr;
 	int len_sum = 0;
 	int status = TP_STATUS_AVAILABLE;
-	int hlen, tlen;
+	int hard_header_len, hlen, tlen;
 
 	mutex_lock(&po->pg_vec_lock);
 
@@ -2136,7 +2137,8 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	if (unlikely(!(dev->flags & IFF_UP)))
 		goto out_put;
 
-	reserve = dev->hard_header_len;
+	hard_header_len = ACCESS_ONCE(dev->hard_header_len);
+	reserve = hard_header_len;
 
 	size_max = po->tx_ring.frame_size
 		- (po->tp_hdrlen - sizeof(struct sockaddr_ll));
@@ -2154,7 +2156,8 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 		}
 
 		status = TP_STATUS_SEND_REQUEST;
-		hlen = LL_RESERVED_SPACE(dev);
+		hlen = ((hard_header_len + dev->needed_headroom) &
+			~(HH_DATA_MOD - 1)) + HH_DATA_MOD;
 		tlen = dev->needed_tailroom;
 		skb = sock_alloc_send_skb(&po->sk,
 				hlen + tlen + sizeof(struct sockaddr_ll),
@@ -2164,7 +2167,7 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 			goto out_status;
 
 		tp_len = tpacket_fill_skb(po, skb, ph, dev, size_max, proto,
-				addr, hlen);
+				addr, hlen, hard_header_len);
 
 		if (unlikely(tp_len < 0)) {
 			if (po->tp_loss) {
