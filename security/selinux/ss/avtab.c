@@ -513,22 +513,10 @@ int avtab_read_item(struct avtab *a, void *fp, struct policydb *pol,
 			printk(KERN_ERR "SELinux: avtab: truncated entry\n");
 			return rc;
 		}
-		if (avtab_android_m_compat ||
-			    ((xperms.specified != AVTAB_XPERMS_IOCTLFUNCTION) &&
-			    (xperms.specified != AVTAB_XPERMS_IOCTLDRIVER) &&
-			    (vers == POLICYDB_VERSION_XPERMS_IOCTL))) {
-			xperms.driver = xperms.specified;
-			if (android_m_compat_optype)
-				xperms.specified = AVTAB_XPERMS_IOCTLDRIVER;
-			else
-				xperms.specified = AVTAB_XPERMS_IOCTLFUNCTION;
-			avtab_android_m_compat_set();
-		} else {
-			rc = next_entry(&xperms.driver, fp, sizeof(u8));
-			if (rc) {
-				printk(KERN_ERR "SELinux: avtab: truncated entry\n");
-				return rc;
-			}
+		rc = next_entry(&xperms.driver, fp, sizeof(u8));
+		if (rc) {
+			printk(KERN_ERR "SELinux: avtab: truncated entry\n");
+			return rc;
 		}
 		rc = next_entry(buf32, fp, sizeof(u32)*ARRAY_SIZE(xperms.perms.p));
 		if (rc) {
@@ -538,6 +526,16 @@ int avtab_read_item(struct avtab *a, void *fp, struct policydb *pol,
 		for (i = 0; i < ARRAY_SIZE(xperms.perms.p); i++)
 			xperms.perms.p[i] = le32_to_cpu(buf32[i]);
 		datum.u.xperms = &xperms;
+
+		/*
+		 * Jenis extended permission yang belum dikenal kernel ini --
+		 * AVTAB_XPERMS_NLMSG (0x03) dari Android 15+ misalnya -- sudah
+		 * terbaca utuh di atas, jadi aliran policy tetap sinkron. Aturannya
+		 * dilewati, bukan membuat seluruh pemuatan policy gagal.
+		 */
+		if (xperms.specified != AVTAB_XPERMS_IOCTLFUNCTION &&
+		    xperms.specified != AVTAB_XPERMS_IOCTLDRIVER)
+			return 0;
 	} else {
 		rc = next_entry(buf32, fp, sizeof(u32));
 		if (rc) {
