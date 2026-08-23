@@ -689,6 +689,3 @@ CONFIG_QMI_ENCDEC=y
 # pendekatan yang sama dipakai a6010 di lineage-23.2 (BOARD_KERNEL_IMAGE_NAME
 # := zImage-dtb; A37 arm64 sehingga padanannya Image-dtb).
 # Lihat arch/arm64/boot/Makefile:32 dan arch/arm64/Kconfig:595.
-CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
-CONFIG_IMG_DTB=y
-CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES="qcom/msm8916-mtp-15399"
