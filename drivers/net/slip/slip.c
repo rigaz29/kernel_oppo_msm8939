@@ -615,14 +615,18 @@ static void sl_uninit(struct net_device *dev)
 	struct slip *sl = netdev_priv(dev);
 
 	sl_free_bufs(sl);
+	/* Drop the slip_devs[] entry here rather than from the destructor:
+	 * ndo_uninit runs under RTNL, so it cannot race sl_sync().
+	 */
+	slip_devs[dev->base_addr] = NULL;
 }
 
-/* Hook the destructor so we can free slip devices at the right point in time */
+/* netdev_run_todo() calls this without RTNL, so it must not touch
+ * slip_devs[]; sl_uninit() has already dropped the entry.
+ */
 static void sl_free_netdev(struct net_device *dev)
 {
-	int i = dev->base_addr;
 	free_netdev(dev);
-	slip_devs[i] = NULL;
 }
 
 static const struct net_device_ops sl_netdev_ops = {
@@ -883,7 +887,7 @@ static void slip_close(struct tty_struct *tty)
 #endif
 	/* Flush network side */
 	unregister_netdev(sl->dev);
-	/* This will complete via sl_free_netdev */
+	/* sl_uninit() has dropped the slip_devs[] entry by now */
 }
 
 static int slip_hangup(struct tty_struct *tty)
