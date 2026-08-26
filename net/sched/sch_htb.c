@@ -196,6 +196,7 @@ static struct htb_class *htb_classify(struct sk_buff *skb, struct Qdisc *sch,
 	struct htb_class *cl;
 	struct tcf_result res;
 	struct tcf_proto *tcf;
+	unsigned int hops = 0;
 	int result;
 
 	/* allow to select class by setting skb->priority to valid classid;
@@ -230,6 +231,11 @@ static struct htb_class *htb_classify(struct sk_buff *skb, struct Qdisc *sch,
 		}
 		if (!cl->level)
 			return cl;	/* we hit leaf; return it */
+
+		if (++hops > TC_HTB_MAXDEPTH) {
+			pr_warn_ratelimited("htb: classify loop detected, dropping packet\n");
+			return NULL;
+		}
 
 		/* we have got inner class; apply inner filter chain */
 		tcf = cl->filter_list;
@@ -561,13 +567,11 @@ static int htb_enqueue(struct sk_buff *skb, struct Qdisc *sch)
 		} else {
 			return qdisc_drop(skb, sch);
 		}
-#ifdef CONFIG_NET_CLS_ACT
 	} else if (!cl) {
 		if (ret & __NET_XMIT_BYPASS)
 			sch->qstats.drops++;
 		kfree_skb(skb);
 		return ret;
-#endif
 	} else if ((ret = qdisc_enqueue(skb, cl->un.leaf.q)) != NET_XMIT_SUCCESS) {
 		if (net_xmit_drop_count(ret)) {
 			sch->qstats.drops++;
