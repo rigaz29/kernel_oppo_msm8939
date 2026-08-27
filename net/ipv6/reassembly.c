@@ -283,6 +283,13 @@ static int ip6_frag_queue(struct frag_queue *fq, struct sk_buff *skb,
 	if (pskb_trim_rcsum(skb, end - offset))
 		goto err;
 
+	/* An IP fragment is never a GSO packet, but an untrusted source
+	 * (virtio_net_hdr) may have attached GSO metadata to it. Do not let
+	 * that reach the reassembled skb, whose head keeps the first
+	 * fragment's shinfo and whose frag_list is not GRO-shaped.
+	 */
+	skb_gso_reset(skb);
+
 	/* Find out which fragments are in front and at the back of us
 	 * in the chain of fragments so far.  We must know where to put
 	 * this fragment, right?
