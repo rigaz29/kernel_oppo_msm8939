@@ -619,6 +619,20 @@ CONFIG_PSTORE_PMSG=y
 CONFIG_PSTORE_RAM=y
 CONFIG_F2FS_FS=y
 CONFIG_F2FS_FS_SECURITY=y
+# FBE (file-based encryption). fs/crypto/ di pohon ini adalah backport fscrypt
+# v1 -- tidak ada keyring.c maupun hkdf.c, jadi hanya FS_IOC_SET/GET_ENCRYPTION_
+# POLICY yang tersedia, bukan FS_IOC_ADD_ENCRYPTION_KEY. vold Android 16
+# mendeteksi ini sendiri (system/vold/KeyUtil.cpp:91-99) dan mundur ke session
+# keyring, jadi jalur v1 tetap didukung.
+#
+# HANYA f2fs. fs/ext4/ di pohon ini nol dukungan enkripsi (fscrypt 0,
+# ext4_encrypt 0, INCOMPAT_ENCRYPT 0); satu-satunya yang mendaftarkan
+# fscrypt_operations adalah f2fs (fs/f2fs/super.c:1222).
+#
+# FS_ENCRYPTION menyeleksi CRYPTO_AES/CBC/ECB/XTS/CTS/CTR/SHA256 dan KEYS
+# sendiri, jadi tidak perlu didaftarkan di sini.
+CONFIG_F2FS_FS_ENCRYPTION=y
+CONFIG_FS_ENCRYPTION=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ASCII=y
 CONFIG_NLS_ISO8859_1=y
