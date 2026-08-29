@@ -256,6 +256,7 @@ static struct ffs_data *__must_check ffs_data_new(void) __attribute__((malloc));
 /* Opened counter handling. */
 static void ffs_data_opened(struct ffs_data *ffs);
 static void ffs_data_closed(struct ffs_data *ffs);
+static void ffs_data_reset(struct ffs_data *ffs);
 
 /* Called with ffs->mutex held; take over ownership of data. */
 static int __must_check
@@ -714,11 +715,36 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 
 	ENTER();
 
-	if (unlikely(ffs->state == FFS_CLOSING))
-		return -EBUSY;
-
 	if (atomic_read(&ffs->opened))
 		return -EBUSY;
+
+	if (unlikely(ffs->state == FFS_CLOSING)) {
+		/*
+		 * Instance tertinggal di FFS_CLOSING tanpa pernah di-reset.
+		 *
+		 * Dua jalur di __ffs_data_got_descs()/__ffs_data_got_strings()
+		 * menyetel state ini lalu keluar TANPA memanggil
+		 * ffs_data_reset(): kegagalan ffs_epfiles_create() dan
+		 * kegagalan functionfs_ready_callback(). Yang kedua
+		 * mengembalikan -ENODEV selama ffs_function.android_dev masih
+		 * NULL -- tepat jendela yang terbuka saat komposisi USB
+		 * berganti, misalnya sys.usb.config "adb" -> "none" -> "mtp,adb"
+		 * yang dilakukan TWRP saat menyalakan MTP.
+		 *
+		 * Sesudah itu setiap open ep0 ditolak -EBUSY SELAMANYA walau
+		 * tidak ada satu pun proses yang memegangnya, sehingga adbd
+		 * gagal mendaftar ulang dan adb tinggal offline. Terbukti di
+		 * perangkat: nol pemegang fd pada /dev/usb-ffs/adb/ep0,
+		 * adbd sehat di hrtimer_nanosleep (gelung ulang 1 detik),
+		 * namun ep1 dan ep2 masih ada -- bukti ffs_data_clear() belum
+		 * pernah jalan.
+		 *
+		 * Pada titik ini opened == 0, jadi tidak ada pemilik yang bisa
+		 * dirugikan: pulihkan instance lalu lanjutkan seperti biasa.
+		 */
+		pr_info("ffs: memulihkan state FFS_CLOSING yang tertinggal\n");
+		ffs_data_reset(ffs);
+	}
 
 	file->private_data = ffs;
 	ffs_data_opened(ffs);
