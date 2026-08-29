@@ -58,6 +58,20 @@ struct shash_desc {
 	void *__ctx[] CRYPTO_MINALIGN_ATTR;
 };
 
+/*
+ * A37: dibutuhkan oleh fs/crypto/keyinfo.c:218 (generator ESSIV fscrypt).
+ * Backport fs/crypto/ di pohon ini disalin dari kernel 4.x tapi tidak pernah
+ * dikompilasi karena CONFIG_FS_ENCRYPTION belum pernah dinyalakan, sehingga
+ * makro ini tidak ikut terbawa. Disalin apa adanya dari kernel a6010
+ * (acroreiser/ULH, include/crypto/hash.h:61-64) yang basisnya sama 3.10.108,
+ * pada posisi yang sama persis -- berkas ini identik byte-per-byte sampai
+ * baris 60.
+ */
+#define SHASH_DESC_ON_STACK(shash, ctx)				  \
+	char __##shash##_desc[sizeof(struct shash_desc) +	  \
+		crypto_shash_descsize(ctx)] CRYPTO_MINALIGN_ATTR; \
+	struct shash_desc *shash = (struct shash_desc *)__##shash##_desc
+
 struct shash_alg {
 	int (*init)(struct shash_desc *desc);
 	int (*update)(struct shash_desc *desc, const u8 *data,
