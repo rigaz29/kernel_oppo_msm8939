@@ -66,4 +66,14 @@ config CRYPTO_CHACHA20_NEON
 	  Adiantum dipakai menggantikan AES-XTS; ChaCha adalah komponen terberat
 	  Adiantum.
 
+
+config CRYPTO_NHPOLY1305_NEON
+	tristate "NEON accelerated NHPoly1305 hash function (for Adiantum)"
+	depends on KERNEL_MODE_NEON
+	select CRYPTO_NHPOLY1305
+	help
+	  Implementasi NHPoly1305 berbantuan NEON untuk arm64. NHPoly1305 adalah
+	  fungsi hash ε-almost-∆-universal yang dipakai Adiantum; setelah ChaCha
+	  memakai NEON, inilah komponen C generik terberat yang tersisa.
+
 endif

@@ -692,6 +692,9 @@ CONFIG_CRYPTO_ADIANTUM=y
 # mainline v5.4; glue-nya ditulis ulang di atas blkcipher_walk karena skcipher
 # belum ada di 3.10.
 CONFIG_CRYPTO_CHACHA20_NEON=y
+# NHPoly1305 ber-NEON: komponen C generik terberat yang tersisa di Adiantum
+# setelah ChaCha memakai NEON.
+CONFIG_CRYPTO_NHPOLY1305_NEON=y
 # AF_ALG: antarmuka crypto kernel dari userspace. Dipakai untuk MENGUKUR
 # adiantum(xchacha12,aes) melawan xts(aes) di CPU ini sebelum memutuskan
 # mengubah format /data. Dipilih daripada tcrypt karena kernel ini dibangun
