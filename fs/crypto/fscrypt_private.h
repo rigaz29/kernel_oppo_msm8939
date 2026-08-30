@@ -35,6 +35,8 @@
  */
 #define FS_MAX_IV_SIZE			32
 
+struct fscrypt_master_key;
+
 union fscrypt_iv {
 	struct {
 		/* nomor blok logis di dalam berkas */
@@ -94,6 +96,12 @@ struct fscrypt_info {
 	u8 ci_master_key[FS_KEY_DESCRIPTOR_SIZE];
 	/* Hanya bermakna bila ci_flags memuat FS_POLICY_FLAG_DIRECT_KEY */
 	u8 ci_nonce[FS_KEY_DERIVATION_NONCE_SIZE];
+	/*
+	 * Bukan NULL hanya pada DIRECT_KEY: ci_ctfm dimiliki bersama lewat
+	 * tabel kunci master, jadi pembebasannya lewat refcount di sini,
+	 * bukan crypto_free_ablkcipher() langsung.
+	 */
+	struct fscrypt_master_key *ci_mk;
 };
 
 typedef enum {
