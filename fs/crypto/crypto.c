@@ -132,10 +132,7 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 			   struct page *dest_page, unsigned int len,
 			   unsigned int offs, gfp_t gfp_flags)
 {
-	struct {
-		__le64 index;
-		u8 padding[FS_IV_SIZE - sizeof(__le64)];
-	} iv;
+	union fscrypt_iv iv;
 	struct ablkcipher_request *req = NULL;
 	DECLARE_CRYPTO_WAIT(wait);
 	struct scatterlist dst, src;
@@ -145,14 +142,20 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 
 	BUG_ON(len == 0);
 
-	BUILD_BUG_ON(sizeof(iv) != FS_IV_SIZE);
+	BUILD_BUG_ON(sizeof(iv) != FS_MAX_IV_SIZE);
 	BUILD_BUG_ON(AES_BLOCK_SIZE != FS_IV_SIZE);
-	iv.index = cpu_to_le64(lblk_num);
-	memset(iv.padding, 0, sizeof(iv.padding));
+
+	/*
+	 * Hanya ci_mode_ivsize byte pertama yang dibaca cipher: 16 untuk AES,
+	 * 32 untuk Adiantum. Seluruh buffer dinolkan lebih dulu supaya tidak
+	 * ada sisa data stack yang bocor ke dalam IV pada mode ber-IV panjang.
+	 */
+	memset(&iv, 0, sizeof(iv));
+	iv.lblk_num = cpu_to_le64(lblk_num);
 
 	if (ci->ci_essiv_tfm != NULL) {
-		crypto_cipher_encrypt_one(ci->ci_essiv_tfm, (u8 *)&iv,
-					  (u8 *)&iv);
+		/* ESSIV hanya dipakai mode AES-CBC, yang IV-nya 16 byte */
+		crypto_cipher_encrypt_one(ci->ci_essiv_tfm, iv.raw, iv.raw);
 	}
 
 	req = ablkcipher_request_alloc(tfm, gfp_flags);

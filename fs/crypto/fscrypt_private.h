@@ -17,6 +17,7 @@
 
 /* Encryption parameters */
 #define FS_IV_SIZE			16
+
 #define FS_AES_128_ECB_KEY_SIZE		16
 #define FS_AES_128_CBC_KEY_SIZE		16
 #define FS_AES_128_CTS_KEY_SIZE		16
@@ -26,6 +27,26 @@
 #define FS_AES_256_XTS_KEY_SIZE		64
 
 #define FS_KEY_DERIVATION_NONCE_SIZE		16
+
+/*
+ * Adiantum memakai IV 32 byte, AES 16. Buffer IV karena itu dibuat sebesar
+ * yang terbesar, dan jumlah byte yang benar-benar dipakai diambil dari
+ * ci_mode_ivsize milik inode. Mengikuti union fscrypt_iv di mainline.
+ */
+#define FS_MAX_IV_SIZE			32
+
+union fscrypt_iv {
+	struct {
+		/* nomor blok logis di dalam berkas */
+		__le64 lblk_num;
+
+		/* nonce per-berkas; HANYA dipakai pada mode DIRECT_KEY, yang
+		 * tidak dipakai di sini -- kunci tetap diturunkan per berkas
+		 * seperti pada AES. */
+		u8 nonce[FS_KEY_DERIVATION_NONCE_SIZE];
+	};
+	u8 raw[FS_MAX_IV_SIZE];
+};
 
 /**
  * Encryption context for inode
@@ -68,6 +89,8 @@ struct fscrypt_info {
 	u8 ci_flags;
 	struct crypto_ablkcipher *ci_ctfm;
 	struct crypto_cipher *ci_essiv_tfm;
+	/* ukuran IV mode ini: 16 untuk AES, 32 untuk Adiantum */
+	u8 ci_mode_ivsize;
 	u8 ci_master_key[FS_KEY_DESCRIPTOR_SIZE];
 };
 
@@ -114,6 +137,15 @@ static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
 
 	if (contents_mode == FS_ENCRYPTION_MODE_AES_256_XTS &&
 	    filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
+		return true;
+
+	/*
+	 * Adiantum harus dipakai untuk isi DAN nama berkas sekaligus.
+	 * libfscrypt di userspace menegakkan aturan yang sama:
+	 * ParseOptionsForApiLevel menolak "adiantum:aes-256-cts".
+	 */
+	if (contents_mode == FS_ENCRYPTION_MODE_ADIANTUM &&
+	    filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM)
 		return true;
 
 	return false;

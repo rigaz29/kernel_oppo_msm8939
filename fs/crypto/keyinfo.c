@@ -136,19 +136,30 @@ out:
 static const struct {
 	const char *cipher_str;
 	int keysize;
+	int ivsize;
 } available_modes[] = {
 	[FS_ENCRYPTION_MODE_AES_256_XTS] = { "xts(aes)",
-					     FS_AES_256_XTS_KEY_SIZE },
+					     FS_AES_256_XTS_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_256_CTS] = { "cts(cbc(aes))",
-					     FS_AES_256_CTS_KEY_SIZE },
+					     FS_AES_256_CTS_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_128_CBC] = { "cbc(aes)",
-					     FS_AES_128_CBC_KEY_SIZE },
+					     FS_AES_128_CBC_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_128_CTS] = { "cts(cbc(aes))",
-					     FS_AES_128_CTS_KEY_SIZE },
+					     FS_AES_128_CTS_KEY_SIZE, 16 },
+	/*
+	 * Adiantum: kunci 32 byte, IV 32 byte. Nilai ivsize inilah yang
+	 * membedakannya dari seluruh mode AES di atas, dan alasan buffer IV
+	 * di crypto.c harus berukuran FS_MAX_IV_SIZE. Angka-angka ini cocok
+	 * dengan tabel mode Adiantum di pohon a6010
+	 * (fs/ext4/crypto_key.c: keysize 32, ivsize 32).
+	 */
+	[FS_ENCRYPTION_MODE_ADIANTUM]    = { "adiantum(xchacha12,aes)",
+					     32, 32 },
 };
 
 static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
-				 const char **cipher_str_ret, int *keysize_ret)
+				 const char **cipher_str_ret, int *keysize_ret,
+				 int *ivsize_ret)
 {
 	u32 mode;
 
@@ -171,6 +182,7 @@ static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
 
 	*cipher_str_ret = available_modes[mode].cipher_str;
 	*keysize_ret = available_modes[mode].keysize;
+	*ivsize_ret = available_modes[mode].ivsize;
 	return 0;
 }
 
@@ -257,6 +269,7 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	struct crypto_ablkcipher *ctfm;
 	const char *cipher_str;
 	int keysize;
+	int ivsize;
 	u8 *raw_key = NULL;
 	int res;
 
@@ -300,9 +313,11 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	memcpy(crypt_info->ci_master_key, ctx.master_key_descriptor,
 				sizeof(crypt_info->ci_master_key));
 
-	res = determine_cipher_type(crypt_info, inode, &cipher_str, &keysize);
+	res = determine_cipher_type(crypt_info, inode, &cipher_str, &keysize,
+				    &ivsize);
 	if (res)
 		goto out;
+	crypt_info->ci_mode_ivsize = ivsize;
 
 	/*
 	 * This cannot be a stack buffer because it is passed to the scatterlist
