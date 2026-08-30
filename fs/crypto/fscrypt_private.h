@@ -40,9 +40,9 @@ union fscrypt_iv {
 		/* nomor blok logis di dalam berkas */
 		__le64 lblk_num;
 
-		/* nonce per-berkas; HANYA dipakai pada mode DIRECT_KEY, yang
-		 * tidak dipakai di sini -- kunci tetap diturunkan per berkas
-		 * seperti pada AES. */
+		/* nonce per-berkas; hanya diisi pada mode DIRECT_KEY. Pada mode
+		 * biasa kunci diturunkan per berkas dari nonce ini, sehingga IV
+		 * cukup berisi lblk_num saja. */
 		u8 nonce[FS_KEY_DERIVATION_NONCE_SIZE];
 	};
 	u8 raw[FS_MAX_IV_SIZE];
@@ -92,6 +92,8 @@ struct fscrypt_info {
 	/* ukuran IV mode ini: 16 untuk AES, 32 untuk Adiantum */
 	u8 ci_mode_ivsize;
 	u8 ci_master_key[FS_KEY_DESCRIPTOR_SIZE];
+	/* Hanya bermakna bila ci_flags memuat FS_POLICY_FLAG_DIRECT_KEY */
+	u8 ci_nonce[FS_KEY_DERIVATION_NONCE_SIZE];
 };
 
 typedef enum {
@@ -155,6 +157,8 @@ static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
 extern struct kmem_cache *fscrypt_info_cachep;
 extern int fscrypt_initialize(unsigned int cop_flags);
 extern struct workqueue_struct *fscrypt_read_workqueue;
+extern void fscrypt_generate_iv(union fscrypt_iv *iv, u64 lblk_num,
+				const struct fscrypt_info *ci);
 extern int fscrypt_do_page_crypto(const struct inode *inode,
 				  fscrypt_direction_t rw, u64 lblk_num,
 				  struct page *src_page,

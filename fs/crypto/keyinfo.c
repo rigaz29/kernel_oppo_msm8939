@@ -126,7 +126,20 @@ static int validate_user_key(struct fscrypt_info *crypt_info,
 		res = -ENOKEY;
 		goto out;
 	}
-	res = derive_key_aes(ctx->nonce, master_key, raw_key);
+	if (crypt_info->ci_flags & FS_POLICY_FLAG_DIRECT_KEY) {
+		/*
+		 * DIRECT_KEY: kunci master dipakai apa adanya sebagai kunci
+		 * berkas -- tidak ada penurunan AES-128-ECB per berkas. Yang
+		 * membedakan antar berkas dipindah ke IV (lihat
+		 * fscrypt_generate_iv). Hanya min_keysize byte pertama yang
+		 * dipakai; pemeriksaan ukuran di atas sudah menjamin kunci
+		 * master tidak lebih pendek dari itu.
+		 */
+		memcpy(raw_key, master_key->raw, min_keysize);
+		res = 0;
+	} else {
+		res = derive_key_aes(ctx->nonce, master_key, raw_key);
+	}
 out:
 	up_read(&keyring_key->sem);
 	key_put(keyring_key);
@@ -318,6 +331,18 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	if (res)
 		goto out;
 	crypt_info->ci_mode_ivsize = ivsize;
+	memcpy(crypt_info->ci_nonce, ctx.nonce, FS_KEY_DERIVATION_NONCE_SIZE);
+
+	/*
+	 * Pada DIRECT_KEY nonce per berkas harus muat di dalam IV, kalau tidak
+	 * seluruh berkas berbagi kunci DAN IV yang sama. Ini menyaring
+	 * kombinasi seperti aes-256-xts+DIRECT_KEY, yang IV-nya cuma 16 byte.
+	 */
+	if ((ctx.flags & FS_POLICY_FLAG_DIRECT_KEY) &&
+	    ivsize < offsetofend(union fscrypt_iv, nonce)) {
+		res = -EINVAL;
+		goto out;
+	}
 
 	/*
 	 * This cannot be a stack buffer because it is passed to the scatterlist
