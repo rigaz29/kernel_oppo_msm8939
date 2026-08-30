@@ -686,6 +686,12 @@ CONFIG_CRYPTO_SHA512=y
 # -generic. AES-256-XTS terukur mentok di 35 MB/s pada perangkat ini.
 # CRYPTO_ADIANTUM otomatis meng-select CHACHA20, POLY1305, dan NHPOLY1305.
 CONFIG_CRYPTO_ADIANTUM=y
+# ChaCha berbantuan NEON untuk arm64. ChaCha adalah komponen terberat
+# Adiantum, dan tanpa ini seluruh Adiantum berjalan sebagai C generik melawan
+# AES yang ber-NEON -- perbandingan yang tidak adil. .S diambil apa adanya dari
+# mainline v5.4; glue-nya ditulis ulang di atas blkcipher_walk karena skcipher
+# belum ada di 3.10.
+CONFIG_CRYPTO_CHACHA20_NEON=y
 # AF_ALG: antarmuka crypto kernel dari userspace. Dipakai untuk MENGUKUR
 # adiantum(xchacha12,aes) melawan xts(aes) di CPU ini sebelum memutuskan
 # mengubah format /data. Dipilih daripada tcrypt karena kernel ini dibangun
