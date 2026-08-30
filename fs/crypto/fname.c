@@ -41,7 +41,7 @@ int fname_encrypt(struct inode *inode, const struct qstr *iname,
 	DECLARE_CRYPTO_WAIT(wait);
 	struct crypto_ablkcipher *tfm = inode->i_crypt_info->ci_ctfm;
 	int res = 0;
-	char iv[FS_CRYPTO_BLOCK_SIZE];
+	union fscrypt_iv iv;
 	struct scatterlist sg;
 
 	/*
@@ -54,7 +54,13 @@ int fname_encrypt(struct inode *inode, const struct qstr *iname,
 	memset(out + iname->len, 0, olen - iname->len);
 
 	/* Initialize the IV */
-	memset(iv, 0, FS_CRYPTO_BLOCK_SIZE);
+	/*
+	 * Buffer IV harus sebesar mode ber-IV terpanjang, bukan
+	 * FS_CRYPTO_BLOCK_SIZE (16). Nama berkas ber-Adiantum memakai IV
+	 * 32 byte, sehingga buffer 16 byte membuat cipher membaca
+	 * melewati batas stack. Seluruh union dinolkan.
+	 */
+	memset(&iv, 0, sizeof(iv));
 
 	/* Set up the encryption request */
 	req = ablkcipher_request_alloc(tfm, GFP_NOFS);
@@ -67,7 +73,7 @@ int fname_encrypt(struct inode *inode, const struct qstr *iname,
 			CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
 			crypto_req_done, &wait);
 	sg_init_one(&sg, out, olen);
-	ablkcipher_request_set_crypt(req, &sg, &sg, olen, iv);
+	ablkcipher_request_set_crypt(req, &sg, &sg, olen, &iv);
 
 	/* Do the encryption */
 	res = crypto_wait_req(crypto_ablkcipher_encrypt(req), &wait);
@@ -98,7 +104,7 @@ static int fname_decrypt(struct inode *inode,
 	struct fscrypt_info *ci = inode->i_crypt_info;
 	struct crypto_ablkcipher *tfm = ci->ci_ctfm;
 	int res = 0;
-	char iv[FS_CRYPTO_BLOCK_SIZE];
+	union fscrypt_iv iv;
 	unsigned lim;
 
 	lim = inode->i_sb->s_cop->max_namelen(inode);
@@ -117,12 +123,18 @@ static int fname_decrypt(struct inode *inode,
 		crypto_req_done, &wait);
 
 	/* Initialize IV */
-	memset(iv, 0, FS_CRYPTO_BLOCK_SIZE);
+	/*
+	 * Buffer IV harus sebesar mode ber-IV terpanjang, bukan
+	 * FS_CRYPTO_BLOCK_SIZE (16). Nama berkas ber-Adiantum memakai IV
+	 * 32 byte, sehingga buffer 16 byte membuat cipher membaca
+	 * melewati batas stack. Seluruh union dinolkan.
+	 */
+	memset(&iv, 0, sizeof(iv));
 
 	/* Create decryption request */
 	sg_init_one(&src_sg, iname->name, iname->len);
 	sg_init_one(&dst_sg, oname->name, oname->len);
-	ablkcipher_request_set_crypt(req, &src_sg, &dst_sg, iname->len, iv);
+	ablkcipher_request_set_crypt(req, &src_sg, &dst_sg, iname->len, &iv);
 	res = crypto_wait_req(crypto_ablkcipher_decrypt(req), &wait);
 	ablkcipher_request_free(req);
 	if (res < 0) {
