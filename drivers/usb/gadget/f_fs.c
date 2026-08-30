@@ -715,8 +715,12 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 
 	ENTER();
 
-	if (atomic_read(&ffs->opened))
+	if (atomic_read(&ffs->opened)) {
+		pr_info("ffs: ep0 open DITOLAK: state=%d opened=%d ref=%d\n",
+			ffs->state, atomic_read(&ffs->opened),
+			atomic_read(&ffs->ref));
 		return -EBUSY;
+	}
 
 	if (unlikely(ffs->state == FFS_CLOSING)) {
 		/*
@@ -748,6 +752,7 @@ static int ffs_ep0_open(struct inode *inode, struct file *file)
 
 	file->private_data = ffs;
 	ffs_data_opened(ffs);
+	pr_info("ffs: OPEN  ep0   -> opened=%d\n", atomic_read(&ffs->opened));
 
 	return 0;
 }
@@ -758,6 +763,8 @@ static int ffs_ep0_release(struct inode *inode, struct file *file)
 
 	ENTER();
 
+	pr_info("ffs: CLOSE ep0   (opened=%d sebelum)\n",
+		atomic_read(&ffs->opened));
 	ffs_data_closed(ffs);
 
 	return 0;
@@ -1129,6 +1136,8 @@ ffs_epfile_open(struct inode *inode, struct file *file)
 	file->private_data = epfile;
 	ffs_data_opened(epfile->ffs);
 	atomic_set(&epfile->error, 0);
+	pr_info("ffs: OPEN  %-5s -> opened=%d\n", epfile->name,
+		atomic_read(&epfile->ffs->opened));
 
 	return 0;
 }
@@ -1203,6 +1212,8 @@ ffs_epfile_release(struct inode *inode, struct file *file)
 	ENTER();
 
 	atomic_set(&epfile->error, 1);
+	pr_info("ffs: CLOSE %-5s (opened=%d sebelum)\n", epfile->name,
+		atomic_read(&epfile->ffs->opened));
 	ffs_data_closed(epfile->ffs);
 	file->private_data = NULL;
 
@@ -1576,6 +1587,8 @@ static void ffs_data_opened(struct ffs_data *ffs)
 
 	atomic_inc(&ffs->ref);
 	atomic_inc(&ffs->opened);
+	pr_info("ffs: opened++ -> %d (ref=%d) state=%d\n",
+		atomic_read(&ffs->opened), atomic_read(&ffs->ref), ffs->state);
 }
 
 static void ffs_data_put(struct ffs_data *ffs)
@@ -1597,8 +1610,13 @@ static void ffs_data_closed(struct ffs_data *ffs)
 	ENTER();
 
 	if (atomic_dec_and_test(&ffs->opened)) {
+		pr_info("ffs: opened-- -> 0, reset\n");
 		ffs->state = FFS_CLOSING;
 		ffs_data_reset(ffs);
+	} else {
+		pr_info("ffs: opened-- -> %d (ref=%d) state=%d\n",
+			atomic_read(&ffs->opened), atomic_read(&ffs->ref),
+			ffs->state);
 	}
 
 	ffs_data_put(ffs);
