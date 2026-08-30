@@ -127,6 +127,28 @@ struct fscrypt_ctx *fscrypt_get_ctx(const struct inode *inode, gfp_t gfp_flags)
 }
 EXPORT_SYMBOL(fscrypt_get_ctx);
 
+/**
+ * fscrypt_generate_iv() - susun IV untuk satu satuan enkripsi
+ *
+ * Seluruh buffer dinolkan lebih dulu supaya tidak ada sisa data stack yang
+ * bocor ke dalam IV pada mode ber-IV panjang; cipher hanya membaca
+ * ci_mode_ivsize byte pertama (16 untuk AES, 32 untuk Adiantum).
+ *
+ * Pada mode DIRECT_KEY kunci master dipakai apa adanya untuk SEMUA berkas,
+ * jadi pemisah antar berkas dipindahkan ke IV: nonce per berkas ikut
+ * dimasukkan. Tanpa ini dua berkas berbeda akan memakai kunci DAN IV yang
+ * sama -- dan pada cipher stream itu berarti keystream terpakai ulang.
+ */
+void fscrypt_generate_iv(union fscrypt_iv *iv, u64 lblk_num,
+			 const struct fscrypt_info *ci)
+{
+	memset(iv, 0, sizeof(*iv));
+	iv->lblk_num = cpu_to_le64(lblk_num);
+
+	if (ci->ci_flags & FS_POLICY_FLAG_DIRECT_KEY)
+		memcpy(iv->nonce, ci->ci_nonce, FS_KEY_DERIVATION_NONCE_SIZE);
+}
+
 int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 			   u64 lblk_num, struct page *src_page,
 			   struct page *dest_page, unsigned int len,
@@ -145,13 +167,7 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 	BUILD_BUG_ON(sizeof(iv) != FS_MAX_IV_SIZE);
 	BUILD_BUG_ON(AES_BLOCK_SIZE != FS_IV_SIZE);
 
-	/*
-	 * Hanya ci_mode_ivsize byte pertama yang dibaca cipher: 16 untuk AES,
-	 * 32 untuk Adiantum. Seluruh buffer dinolkan lebih dulu supaya tidak
-	 * ada sisa data stack yang bocor ke dalam IV pada mode ber-IV panjang.
-	 */
-	memset(&iv, 0, sizeof(iv));
-	iv.lblk_num = cpu_to_le64(lblk_num);
+	fscrypt_generate_iv(&iv, lblk_num, ci);
 
 	if (ci->ci_essiv_tfm != NULL) {
 		/* ESSIV hanya dipakai mode AES-CBC, yang IV-nya 16 byte */
