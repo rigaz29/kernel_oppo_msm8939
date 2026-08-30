@@ -177,7 +177,15 @@ struct inodes_stat_t {
 #define FS_POLICY_FLAGS_PAD_16		0x02
 #define FS_POLICY_FLAGS_PAD_32		0x03
 #define FS_POLICY_FLAGS_PAD_MASK	0x03
-#define FS_POLICY_FLAGS_VALID		0x03
+/*
+ * Kunci master dipakai langsung sebagai kunci berkas, tanpa penurunan
+ * AES-128-ECB per berkas; sebagai gantinya nonce per berkas masuk ke dalam IV.
+ * Android SELALU menyalakan flag ini untuk Adiantum -- lihat
+ * system/extras/libfscrypt/fscrypt.cpp:261 -- jadi tanpa dukungan di sini
+ * kebijakan adiantum akan ditolak dengan -EINVAL.
+ */
+#define FS_POLICY_FLAG_DIRECT_KEY	0x04
+#define FS_POLICY_FLAGS_VALID		0x07
 
 /* Encryption algorithms */
 #define FS_ENCRYPTION_MODE_INVALID		0

@@ -58,9 +58,12 @@ int fname_encrypt(struct inode *inode, const struct qstr *iname,
 	 * Buffer IV harus sebesar mode ber-IV terpanjang, bukan
 	 * FS_CRYPTO_BLOCK_SIZE (16). Nama berkas ber-Adiantum memakai IV
 	 * 32 byte, sehingga buffer 16 byte membuat cipher membaca
-	 * melewati batas stack. Seluruh union dinolkan.
+	 * melewati batas stack.
+	 *
+	 * Nama berkas tidak punya nomor blok, jadi lblk_num selalu 0; pada
+	 * mode DIRECT_KEY nonce per berkas tetap ikut masuk lewat helper.
 	 */
-	memset(&iv, 0, sizeof(iv));
+	fscrypt_generate_iv(&iv, 0, inode->i_crypt_info);
 
 	/* Set up the encryption request */
 	req = ablkcipher_request_alloc(tfm, GFP_NOFS);
@@ -127,9 +130,12 @@ static int fname_decrypt(struct inode *inode,
 	 * Buffer IV harus sebesar mode ber-IV terpanjang, bukan
 	 * FS_CRYPTO_BLOCK_SIZE (16). Nama berkas ber-Adiantum memakai IV
 	 * 32 byte, sehingga buffer 16 byte membuat cipher membaca
-	 * melewati batas stack. Seluruh union dinolkan.
+	 * melewati batas stack.
+	 *
+	 * Nama berkas tidak punya nomor blok, jadi lblk_num selalu 0; pada
+	 * mode DIRECT_KEY nonce per berkas tetap ikut masuk lewat helper.
 	 */
-	memset(&iv, 0, sizeof(iv));
+	fscrypt_generate_iv(&iv, 0, ci);
 
 	/* Create decryption request */
 	sg_init_one(&src_sg, iname->name, iname->len);
