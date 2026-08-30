@@ -54,4 +54,26 @@ config CRYPTO_CRC32_ARM64
 	tristate "CRC32 and CRC32C using optional ARMv8 instructions"
 	depends on ARM64
 	select CRYPTO_HASH
+
+config CRYPTO_CHACHA20_NEON
+	tristate "NEON accelerated ChaCha and XChaCha stream ciphers"
+	depends on KERNEL_MODE_NEON
+	select CRYPTO_BLKCIPHER
+	select CRYPTO_CHACHA20
+	help
+	  Implementasi ChaCha20, XChaCha20, dan XChaCha12 berbantuan NEON untuk
+	  arm64. Berguna terutama pada CPU tanpa ARMv8 Crypto Extensions, di mana
+	  Adiantum dipakai menggantikan AES-XTS; ChaCha adalah komponen terberat
+	  Adiantum.
+
+
+config CRYPTO_NHPOLY1305_NEON
+	tristate "NEON accelerated NHPoly1305 hash function (for Adiantum)"
+	depends on KERNEL_MODE_NEON
+	select CRYPTO_NHPOLY1305
+	help
+	  Implementasi NHPoly1305 berbantuan NEON untuk arm64. NHPoly1305 adalah
+	  fungsi hash ε-almost-∆-universal yang dipakai Adiantum; setelah ChaCha
+	  memakai NEON, inilah komponen C generik terberat yang tersisa.
+
 endif
