@@ -27,6 +27,7 @@
 #include <linux/dcache.h>
 #include <linux/namei.h>
 #include <crypto/aes.h>
+#include <crypto/skcipher.h>
 #include "fscrypt_private.h"
 
 static unsigned int num_prealloc_crypto_pages = 32;
@@ -126,32 +127,14 @@ struct fscrypt_ctx *fscrypt_get_ctx(const struct inode *inode, gfp_t gfp_flags)
 }
 EXPORT_SYMBOL(fscrypt_get_ctx);
 
-/**
- * page_crypt_complete() - completion callback for page crypto
- * @req: The asynchronous cipher request context
- * @res: The result of the cipher operation
- */
-static void page_crypt_complete(struct crypto_async_request *req, int res)
-{
-	struct fscrypt_completion_result *ecr = req->data;
-
-	if (res == -EINPROGRESS)
-		return;
-	ecr->res = res;
-	complete(&ecr->completion);
-}
-
 int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 			   u64 lblk_num, struct page *src_page,
 			   struct page *dest_page, unsigned int len,
 			   unsigned int offs, gfp_t gfp_flags)
 {
-	struct {
-		__le64 index;
-		u8 padding[FS_IV_SIZE - sizeof(__le64)];
-	} iv;
+	union fscrypt_iv iv;
 	struct ablkcipher_request *req = NULL;
-	DECLARE_FS_COMPLETION_RESULT(ecr);
+	DECLARE_CRYPTO_WAIT(wait);
 	struct scatterlist dst, src;
 	struct fscrypt_info *ci = inode->i_crypt_info;
 	struct crypto_ablkcipher *tfm = ci->ci_ctfm;
@@ -159,14 +142,20 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 
 	BUG_ON(len == 0);
 
-	BUILD_BUG_ON(sizeof(iv) != FS_IV_SIZE);
+	BUILD_BUG_ON(sizeof(iv) != FS_MAX_IV_SIZE);
 	BUILD_BUG_ON(AES_BLOCK_SIZE != FS_IV_SIZE);
-	iv.index = cpu_to_le64(lblk_num);
-	memset(iv.padding, 0, sizeof(iv.padding));
+
+	/*
+	 * Hanya ci_mode_ivsize byte pertama yang dibaca cipher: 16 untuk AES,
+	 * 32 untuk Adiantum. Seluruh buffer dinolkan lebih dulu supaya tidak
+	 * ada sisa data stack yang bocor ke dalam IV pada mode ber-IV panjang.
+	 */
+	memset(&iv, 0, sizeof(iv));
+	iv.lblk_num = cpu_to_le64(lblk_num);
 
 	if (ci->ci_essiv_tfm != NULL) {
-		crypto_cipher_encrypt_one(ci->ci_essiv_tfm, (u8 *)&iv,
-					  (u8 *)&iv);
+		/* ESSIV hanya dipakai mode AES-CBC, yang IV-nya 16 byte */
+		crypto_cipher_encrypt_one(ci->ci_essiv_tfm, iv.raw, iv.raw);
 	}
 
 	req = ablkcipher_request_alloc(tfm, gfp_flags);
@@ -179,7 +168,7 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 
 	ablkcipher_request_set_callback(
 		req, CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
-		page_crypt_complete, &ecr);
+		crypto_req_done, &wait);
 
 	sg_init_table(&dst, 1);
 	sg_set_page(&dst, dest_page, len, offs);
@@ -187,14 +176,9 @@ int fscrypt_do_page_crypto(const struct inode *inode, fscrypt_direction_t rw,
 	sg_set_page(&src, src_page, len, offs);
 	ablkcipher_request_set_crypt(req, &src, &dst, len, &iv);
 	if (rw == FS_DECRYPT)
-		res = crypto_ablkcipher_decrypt(req);
+		res = crypto_wait_req(crypto_ablkcipher_decrypt(req), &wait);
 	else
-		res = crypto_ablkcipher_encrypt(req);
-	if (res == -EINPROGRESS || res == -EBUSY) {
-		BUG_ON(req->base.data != &ecr);
-		wait_for_completion(&ecr.completion);
-		res = ecr.res;
-	}
+		res = crypto_wait_req(crypto_ablkcipher_encrypt(req), &wait);
 	ablkcipher_request_free(req);
 	if (res) {
 		printk_ratelimited(KERN_ERR
@@ -340,7 +324,7 @@ static int fscrypt_d_revalidate(struct dentry *dentry, unsigned int flags)
 		return -ECHILD;
 
 	dir = dget_parent(dentry);
-	if (!d_inode(dir)->i_sb->s_cop->is_encrypted(d_inode(dir))) {
+	if (!IS_ENCRYPTED(d_inode(dir))) {
 		dput(dir);
 		return 0;
 	}
@@ -410,11 +394,8 @@ int fscrypt_initialize(unsigned int cop_flags)
 {
 	int i, res = -ENOMEM;
 
-	/*
-	 * No need to allocate a bounce page pool if there already is one or
-	 * this FS won't use it.
-	 */
-	if (cop_flags & FS_CFLG_OWN_PAGES || fscrypt_bounce_page_pool)
+	/* No need to allocate a bounce page pool if this FS won't use it. */
+	if (cop_flags & FS_CFLG_OWN_PAGES)
 		return 0;
 
 	mutex_lock(&fscrypt_init_mutex);
@@ -449,8 +430,17 @@ fail:
  */
 static int __init fscrypt_init(void)
 {
+	/*
+	 * Use an unbound workqueue to allow bios to be decrypted in parallel
+	 * even when they happen to complete on the same CPU.  This sacrifices
+	 * locality, but it's worthwhile since decryption is CPU-intensive.
+	 *
+	 * Also use a high-priority workqueue to prioritize decryption work,
+	 * which blocks reads from completing, over regular application tasks.
+	 */
 	fscrypt_read_workqueue = alloc_workqueue("fscrypt_read_queue",
-							WQ_HIGHPRI, 0);
+						 WQ_UNBOUND | WQ_HIGHPRI,
+						 num_online_cpus());
 	if (!fscrypt_read_workqueue)
 		goto fail;
 

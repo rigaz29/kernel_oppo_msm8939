@@ -11,11 +11,13 @@
 #ifndef _FSCRYPT_PRIVATE_H
 #define _FSCRYPT_PRIVATE_H
 
-#include <linux/fscrypt_supp.h>
+#define __FS_HAS_ENCRYPTION 1
+#include <linux/fscrypt.h>
 #include <crypto/hash.h>
 
 /* Encryption parameters */
 #define FS_IV_SIZE			16
+
 #define FS_AES_128_ECB_KEY_SIZE		16
 #define FS_AES_128_CBC_KEY_SIZE		16
 #define FS_AES_128_CTS_KEY_SIZE		16
@@ -25,6 +27,26 @@
 #define FS_AES_256_XTS_KEY_SIZE		64
 
 #define FS_KEY_DERIVATION_NONCE_SIZE		16
+
+/*
+ * Adiantum memakai IV 32 byte, AES 16. Buffer IV karena itu dibuat sebesar
+ * yang terbesar, dan jumlah byte yang benar-benar dipakai diambil dari
+ * ci_mode_ivsize milik inode. Mengikuti union fscrypt_iv di mainline.
+ */
+#define FS_MAX_IV_SIZE			32
+
+union fscrypt_iv {
+	struct {
+		/* nomor blok logis di dalam berkas */
+		__le64 lblk_num;
+
+		/* nonce per-berkas; HANYA dipakai pada mode DIRECT_KEY, yang
+		 * tidak dipakai di sini -- kunci tetap diturunkan per berkas
+		 * seperti pada AES. */
+		u8 nonce[FS_KEY_DERIVATION_NONCE_SIZE];
+	};
+	u8 raw[FS_MAX_IV_SIZE];
+};
 
 /**
  * Encryption context for inode
@@ -48,6 +70,15 @@ struct fscrypt_context {
 
 #define FS_ENCRYPTION_CONTEXT_FORMAT_V1		1
 
+/**
+ * For encrypted symlinks, the ciphertext length is stored at the beginning
+ * of the string in little-endian format.
+ */
+struct fscrypt_symlink_data {
+	__le16 len;
+	char encrypted_path[1];
+} __packed;
+
 /*
  * A pointer to this structure is stored in the file system's in-core
  * representation of an inode.
@@ -58,6 +89,8 @@ struct fscrypt_info {
 	u8 ci_flags;
 	struct crypto_ablkcipher *ci_ctfm;
 	struct crypto_cipher *ci_essiv_tfm;
+	/* ukuran IV mode ini: 16 untuk AES, 32 untuk Adiantum */
+	u8 ci_mode_ivsize;
 	u8 ci_master_key[FS_KEY_DESCRIPTOR_SIZE];
 };
 
@@ -68,15 +101,6 @@ typedef enum {
 
 #define FS_CTX_REQUIRES_FREE_ENCRYPT_FL		0x00000001
 #define FS_CTX_HAS_BOUNCE_BUFFER_FL		0x00000002
-
-struct fscrypt_completion_result {
-	struct completion completion;
-	int res;
-};
-
-#define DECLARE_FS_COMPLETION_RESULT(ecr) \
-	struct fscrypt_completion_result ecr = { \
-		COMPLETION_INITIALIZER_ONSTACK((ecr).completion), 0 }
 
 static inline void inode_lock(struct inode *inode)
 {
@@ -104,17 +128,31 @@ static inline void bio_set_op_attrs(struct bio *bio, unsigned op,
 	bio->bi_rw = op | op_flags;
 }
 
-static inline struct inode *d_inode(const struct dentry *dentry)
+static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
+					   u32 filenames_mode)
 {
-	return dentry->d_inode;
-}
+	if (contents_mode == FS_ENCRYPTION_MODE_AES_128_CBC &&
+	    filenames_mode == FS_ENCRYPTION_MODE_AES_128_CTS)
+		return true;
 
-static inline bool d_is_negative(const struct dentry *dentry)
-{
-	return (dentry->d_inode == NULL);
+	if (contents_mode == FS_ENCRYPTION_MODE_AES_256_XTS &&
+	    filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
+		return true;
+
+	/*
+	 * Adiantum harus dipakai untuk isi DAN nama berkas sekaligus.
+	 * libfscrypt di userspace menegakkan aturan yang sama:
+	 * ParseOptionsForApiLevel menolak "adiantum:aes-256-cts".
+	 */
+	if (contents_mode == FS_ENCRYPTION_MODE_ADIANTUM &&
+	    filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM)
+		return true;
+
+	return false;
 }
 
 /* crypto.c */
+extern struct kmem_cache *fscrypt_info_cachep;
 extern int fscrypt_initialize(unsigned int cop_flags);
 extern struct workqueue_struct *fscrypt_read_workqueue;
 extern int fscrypt_do_page_crypto(const struct inode *inode,
@@ -125,6 +163,13 @@ extern int fscrypt_do_page_crypto(const struct inode *inode,
 				  gfp_t gfp_flags);
 extern struct page *fscrypt_alloc_bounce_page(struct fscrypt_ctx *ctx,
 					      gfp_t gfp_flags);
+
+/* fname.c */
+extern int fname_encrypt(struct inode *inode, const struct qstr *iname,
+			 u8 *out, unsigned int olen);
+extern bool fscrypt_fname_encrypted_size(const struct inode *inode,
+					 u32 orig_len, u32 max_len,
+					 u32 *encrypted_len_ret);
 
 /* keyinfo.c */
 extern void __exit fscrypt_essiv_cleanup(void);

@@ -13,20 +13,10 @@
 #include <linux/ratelimit.h>
 #include <crypto/aes.h>
 #include <crypto/sha.h>
+#include <crypto/skcipher.h>
 #include "fscrypt_private.h"
 
 static struct crypto_shash *essiv_hash_tfm;
-
-static void derive_crypt_complete(struct crypto_async_request *req, int rc)
-{
-	struct fscrypt_completion_result *ecr = req->data;
-
-	if (rc == -EINPROGRESS)
-		return;
-
-	ecr->res = rc;
-	complete(&ecr->completion);
-}
 
 /**
  * derive_key_aes() - Derive a key using AES-128-ECB
@@ -42,7 +32,7 @@ static int derive_key_aes(u8 deriving_key[FS_AES_128_ECB_KEY_SIZE],
 {
 	int res = 0;
 	struct ablkcipher_request *req = NULL;
-	DECLARE_FS_COMPLETION_RESULT(ecr);
+	DECLARE_CRYPTO_WAIT(wait);
 	struct scatterlist src_sg, dst_sg;
 	struct crypto_ablkcipher *tfm = crypto_alloc_ablkcipher("ecb(aes)", 0, 0);
 
@@ -59,7 +49,7 @@ static int derive_key_aes(u8 deriving_key[FS_AES_128_ECB_KEY_SIZE],
 	}
 	ablkcipher_request_set_callback(req,
 			CRYPTO_TFM_REQ_MAY_BACKLOG | CRYPTO_TFM_REQ_MAY_SLEEP,
-			derive_crypt_complete, &ecr);
+			crypto_req_done, &wait);
 	res = crypto_ablkcipher_setkey(tfm, deriving_key,
 					FS_AES_128_ECB_KEY_SIZE);
 	if (res < 0)
@@ -69,11 +59,7 @@ static int derive_key_aes(u8 deriving_key[FS_AES_128_ECB_KEY_SIZE],
 	sg_init_one(&dst_sg, derived_raw_key, source_key->size);
 	ablkcipher_request_set_crypt(req, &src_sg, &dst_sg, source_key->size,
 				   NULL);
-	res = crypto_ablkcipher_encrypt(req);
-	if (res == -EINPROGRESS || res == -EBUSY) {
-		wait_for_completion(&ecr.completion);
-		res = ecr.res;
-	}
+	res = crypto_wait_req(crypto_ablkcipher_encrypt(req), &wait);
 out:
 	ablkcipher_request_free(req);
 	crypto_free_ablkcipher(tfm);
@@ -120,6 +106,11 @@ static int validate_user_key(struct fscrypt_info *crypt_info,
 		goto out;
 	}
 	ukp = user_key_payload(keyring_key);
+	if (!ukp) {
+		/* key was revoked before we acquired its semaphore */
+		res = -EKEYREVOKED;
+		goto out;
+	}
 	if (ukp->datalen != sizeof(struct fscrypt_key)) {
 		res = -EINVAL;
 		goto out;
@@ -145,19 +136,30 @@ out:
 static const struct {
 	const char *cipher_str;
 	int keysize;
+	int ivsize;
 } available_modes[] = {
 	[FS_ENCRYPTION_MODE_AES_256_XTS] = { "xts(aes)",
-					     FS_AES_256_XTS_KEY_SIZE },
+					     FS_AES_256_XTS_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_256_CTS] = { "cts(cbc(aes))",
-					     FS_AES_256_CTS_KEY_SIZE },
+					     FS_AES_256_CTS_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_128_CBC] = { "cbc(aes)",
-					     FS_AES_128_CBC_KEY_SIZE },
+					     FS_AES_128_CBC_KEY_SIZE, 16 },
 	[FS_ENCRYPTION_MODE_AES_128_CTS] = { "cts(cbc(aes))",
-					     FS_AES_128_CTS_KEY_SIZE },
+					     FS_AES_128_CTS_KEY_SIZE, 16 },
+	/*
+	 * Adiantum: kunci 32 byte, IV 32 byte. Nilai ivsize inilah yang
+	 * membedakannya dari seluruh mode AES di atas, dan alasan buffer IV
+	 * di crypto.c harus berukuran FS_MAX_IV_SIZE. Angka-angka ini cocok
+	 * dengan tabel mode Adiantum di pohon a6010
+	 * (fs/ext4/crypto_key.c: keysize 32, ivsize 32).
+	 */
+	[FS_ENCRYPTION_MODE_ADIANTUM]    = { "adiantum(xchacha12,aes)",
+					     32, 32 },
 };
 
 static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
-				 const char **cipher_str_ret, int *keysize_ret)
+				 const char **cipher_str_ret, int *keysize_ret,
+				 int *ivsize_ret)
 {
 	u32 mode;
 
@@ -180,6 +182,7 @@ static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
 
 	*cipher_str_ret = available_modes[mode].cipher_str;
 	*keysize_ret = available_modes[mode].keysize;
+	*ivsize_ret = available_modes[mode].ivsize;
 	return 0;
 }
 
@@ -266,6 +269,7 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	struct crypto_ablkcipher *ctfm;
 	const char *cipher_str;
 	int keysize;
+	int ivsize;
 	u8 *raw_key = NULL;
 	int res;
 
@@ -279,7 +283,7 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	res = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
 	if (res < 0) {
 		if (!fscrypt_dummy_context_enabled(inode) ||
-		    inode->i_sb->s_cop->is_encrypted(inode))
+		    IS_ENCRYPTED(inode))
 			return res;
 		/* Fake up a context for an unencrypted directory */
 		memset(&ctx, 0, sizeof(ctx));
@@ -309,9 +313,11 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	memcpy(crypt_info->ci_master_key, ctx.master_key_descriptor,
 				sizeof(crypt_info->ci_master_key));
 
-	res = determine_cipher_type(crypt_info, inode, &cipher_str, &keysize);
+	res = determine_cipher_type(crypt_info, inode, &cipher_str, &keysize,
+				    &ivsize);
 	if (res)
 		goto out;
+	crypt_info->ci_mode_ivsize = ivsize;
 
 	/*
 	 * This cannot be a stack buffer because it is passed to the scatterlist
@@ -374,19 +380,9 @@ out:
 }
 EXPORT_SYMBOL(fscrypt_get_encryption_info);
 
-void fscrypt_put_encryption_info(struct inode *inode, struct fscrypt_info *ci)
+void fscrypt_put_encryption_info(struct inode *inode)
 {
-	struct fscrypt_info *prev;
-
-	if (ci == NULL)
-		ci = ACCESS_ONCE(inode->i_crypt_info);
-	if (ci == NULL)
-		return;
-
-	prev = cmpxchg(&inode->i_crypt_info, ci, NULL);
-	if (prev != ci)
-		return;
-
-	put_crypt_info(ci);
+	put_crypt_info(inode->i_crypt_info);
+	inode->i_crypt_info = NULL;
 }
 EXPORT_SYMBOL(fscrypt_put_encryption_info);

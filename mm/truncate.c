@@ -314,6 +314,29 @@ void truncate_inode_pages(struct address_space *mapping, loff_t lstart)
 EXPORT_SYMBOL(truncate_inode_pages);
 
 /**
+ * truncate_inode_pages_final - truncate *all* pages before inode dies
+ * @mapping: mapping to truncate
+ *
+ * Called under (and serialized by) inode->i_mutex.
+ *
+ * Filesystems have to use this in the .evict_inode path to inform the
+ * VM that this is the final truncate and the inode is going away.
+ *
+ * Upstream memakai varian ini untuk sekaligus membersihkan shadow entry dan
+ * menyetel AS_EXITING supaya reclaim berhenti memasang shadow baru. Kernel ini
+ * TIDAK punya mesin shadow entry sama sekali -- nol nrshadows di mm/, tanpa
+ * AS_EXITING di pagemap.h, tanpa mm/workingset.c, dan __delete_from_page_cache()
+ * masih bertanda tangan lama tanpa argumen shadow. Karena tidak ada shadow
+ * entry yang perlu dibersihkan dan tidak ada reclaim yang perlu dihentikan,
+ * sisa semantiknya persis truncate_inode_pages(mapping, 0).
+ */
+void truncate_inode_pages_final(struct address_space *mapping)
+{
+	truncate_inode_pages(mapping, 0);
+}
+EXPORT_SYMBOL(truncate_inode_pages_final);
+
+/**
  * invalidate_mapping_pages - Invalidate all the unlocked pages of one inode
  * @mapping: the address_space which holds the pages to invalidate
  * @start: the offset 'from' which to invalidate

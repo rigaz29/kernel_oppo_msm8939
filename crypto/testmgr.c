@@ -1729,6 +1729,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 		.test = alg_test_null,
 		.fips_allowed = 1,
 	}, {
+		.alg = "adiantum(xchacha12,aes)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = adiantum_xchacha12_aes_enc_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha12_aes_enc_tv_template),
+				},
+				.dec = {
+					.vecs = adiantum_xchacha12_aes_dec_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha12_aes_dec_tv_template),
+				},
+			}
+		},
+	}, {
+		.alg = "adiantum(xchacha20,aes)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = adiantum_xchacha20_aes_enc_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha20_aes_enc_tv_template),
+				},
+				.dec = {
+					.vecs = adiantum_xchacha20_aes_dec_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha20_aes_dec_tv_template),
+				},
+			}
+		},
+	}, {
 		.alg = "ansi_cprng",
 		.test = alg_test_cprng,
 		.fips_allowed = 1,
@@ -2712,6 +2742,15 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "nhpoly1305",
+		.test = alg_test_hash,
+		.suite = {
+			.hash = {
+				.vecs = nhpoly1305_tv_template,
+				.count = ARRAY_SIZE(nhpoly1305_tv_template),
+			}
+		}
+	}, {
 		.alg = "ofb(aes)",
 		.test = alg_test_skcipher,
 		.fips_allowed = 1,
@@ -2973,6 +3012,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 				.count = XCBC_AES_TEST_VECTORS
 			}
 		}
+	}, {
+		.alg = "xchacha12",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = xchacha12_tv_template,
+					.count = ARRAY_SIZE(xchacha12_tv_template),
+				},
+				.dec = {
+					.vecs = xchacha12_tv_template,
+					.count = ARRAY_SIZE(xchacha12_tv_template),
+				},
+			}
+		},
+	}, {
+		.alg = "xchacha20",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = xchacha20_tv_template,
+					.count = ARRAY_SIZE(xchacha20_tv_template),
+				},
+				.dec = {
+					.vecs = xchacha20_tv_template,
+					.count = ARRAY_SIZE(xchacha20_tv_template),
+				},
+			}
+		},
 	}, {
 		.alg = "xts(aes)",
 		.test = alg_test_skcipher,
