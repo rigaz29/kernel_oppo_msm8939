@@ -513,7 +513,12 @@ int kthread_worker_fn(void *worker_ptr)
 	struct kthread_worker *worker = worker_ptr;
 	struct kthread_work *work;
 
-	WARN_ON(worker->task);
+	/*
+	 * kthread_create_worker() sudah mengisi worker->task sebelum
+	 * membangunkan thread ini, jadi terisi lebih dulu itu SAH. Yang tetap
+	 * salah adalah kalau ia menunjuk task lain.
+	 */
+	WARN_ON(worker->task && worker->task != current);
 	worker->task = current;
 repeat:
 	set_current_state(TASK_INTERRUPTIBLE);	/* mb paired w/ kthread_stop */
@@ -655,3 +660,141 @@ void flush_kthread_worker(struct kthread_worker *worker)
 	wait_for_completion(&fwork.done);
 }
 EXPORT_SYMBOL_GPL(flush_kthread_worker);
+
+/*
+ * --- kthread_work bertunda ---
+ *
+ * Lihat catatan di include/linux/kthread.h. Semuanya dibangun di atas
+ * queue_kthread_work()/flush_kthread_work() yang sudah ada; inti
+ * kthread_worker tidak disentuh.
+ */
+void kthread_delayed_work_timer_fn(unsigned long __data)
+{
+	struct kthread_delayed_work *dwork =
+		(struct kthread_delayed_work *)__data;
+	struct kthread_worker *worker = dwork->kdw_worker;
+
+	if (WARN_ON_ONCE(!worker))
+		return;
+	queue_kthread_work(worker, &dwork->work);
+}
+EXPORT_SYMBOL_GPL(kthread_delayed_work_timer_fn);
+
+/**
+ * kthread_queue_delayed_work - antrekan pekerjaan setelah tundaan
+ *
+ * Mengembalikan true bila pekerjaan berhasil diantrekan atau timernya
+ * dipasang; false bila pekerjaan itu sudah tertunda atau sudah antre.
+ */
+bool kthread_queue_delayed_work(struct kthread_worker *worker,
+				struct kthread_delayed_work *dwork,
+				unsigned long delay)
+{
+	if (!delay)
+		return queue_kthread_work(worker, &dwork->work);
+
+	/*
+	 * Sengaja tidak memasang ulang timer yang sudah berjalan. PSI
+	 * memanggil ini dari jalur panas (psi_schedule_poll_work) dan hanya
+	 * butuh jaminan "akan dijalankan", bukan "dijadwalkan ulang".
+	 */
+	if (timer_pending(&dwork->timer))
+		return false;
+
+	dwork->kdw_worker = worker;
+	dwork->timer.expires = jiffies + delay;
+	add_timer(&dwork->timer);
+	return true;
+}
+EXPORT_SYMBOL_GPL(kthread_queue_delayed_work);
+
+/**
+ * kthread_cancel_delayed_work_sync - batalkan dan tunggu sampai selesai
+ *
+ * del_timer_sync() menjamin fungsi timer tidak sedang berjalan saat ia
+ * kembali. Kalau timer sempat mengantrekan pekerjaannya lebih dulu,
+ * flush_kthread_work() yang menunggunya selesai. flush aman dipanggil pada
+ * pekerjaan yang tidak pernah diantrekan -- ia langsung kembali saat
+ * work->worker masih NULL (kernel/kthread.c:616).
+ */
+bool kthread_cancel_delayed_work_sync(struct kthread_delayed_work *dwork)
+{
+	bool pending;
+
+	pending = del_timer_sync(&dwork->timer);
+	flush_kthread_work(&dwork->work);
+	return pending;
+}
+EXPORT_SYMBOL_GPL(kthread_cancel_delayed_work_sync);
+
+/**
+ * kthread_create_worker - buat kthread_worker beserta thread-nya
+ */
+struct kthread_worker *
+kthread_create_worker(unsigned int flags, const char namefmt[], ...)
+{
+	struct kthread_worker *worker;
+	struct task_struct *task;
+	va_list args;
+	char name[TASK_COMM_LEN];
+
+	/* flags (mis. KTW_FREEZABLE) belum didukung; pemakai kita memberi 0 */
+	if (WARN_ON_ONCE(flags))
+		return ERR_PTR(-EINVAL);
+
+	worker = kzalloc(sizeof(*worker), GFP_KERNEL);
+	if (!worker)
+		return ERR_PTR(-ENOMEM);
+	init_kthread_worker(worker);
+
+	va_start(args, namefmt);
+	vsnprintf(name, sizeof(name), namefmt, args);
+	va_end(args);
+
+	/*
+	 * WAJIB kthread_create() lalu wake_up_process(), BUKAN kthread_run().
+	 *
+	 * kthread_run() menjalankan thread seketika, dan worker->task baru
+	 * terisi ketika kthread_worker_fn benar-benar dijadwalkan. Pemanggil
+	 * yang langsung memakai worker->task -- psi_trigger_create() memanggil
+	 * sched_setscheduler_nocheck(kworker->task, ...) -- bisa mendapat NULL
+	 * dan menabrak task_rq_lock(NULL).
+	 *
+	 * Terbukti di perangkat: panic pada system_server dengan jejak
+	 * raw_spin_lock_irqsave <- __sched_setscheduler <-
+	 * sched_setscheduler_nocheck <- psi_trigger_create <- psi_write.
+	 *
+	 * Versi 4.9 asli mengisi worker->task lebih dulu baru membangunkan
+	 * thread-nya; urutan itu yang ditiru di sini.
+	 */
+	task = kthread_create(kthread_worker_fn, worker, "%s", name);
+	if (IS_ERR(task)) {
+		kfree(worker);
+		return ERR_CAST(task);
+	}
+	worker->task = task;
+	wake_up_process(task);
+
+	return worker;
+}
+EXPORT_SYMBOL_GPL(kthread_create_worker);
+
+/**
+ * kthread_destroy_worker - tuntaskan sisa pekerjaan lalu hentikan thread
+ */
+void kthread_destroy_worker(struct kthread_worker *worker)
+{
+	struct task_struct *task;
+
+	if (!worker)
+		return;
+	task = worker->task;
+	if (WARN_ON(!task))
+		return;
+
+	flush_kthread_worker(worker);
+	kthread_stop(task);
+	WARN_ON(!list_empty(&worker->work_list));
+	kfree(worker);
+}
+EXPORT_SYMBOL_GPL(kthread_destroy_worker);
