@@ -1263,6 +1263,11 @@ struct task_struct {
 	struct sched_info sched_info;
 #endif
 
+#ifdef CONFIG_PSI
+	/* Keadaan tersendat yang sedang disumbangkan task ini ke PSI */
+	unsigned int psi_flags;
+#endif
+
 	struct list_head tasks;
 #ifdef CONFIG_SMP
 	struct plist_node pushable_tasks;
@@ -1292,6 +1297,15 @@ struct task_struct {
 	/* Revert to default priority/policy when forking */
 	unsigned sched_reset_on_fork:1;
 	unsigned sched_contributes_to_load:1;
+#ifdef CONFIG_PSI
+	/*
+	 * Task dipindah antar runqueue saat dibangunkan; psi_ttwu_dequeue()
+	 * sudah mencabut keadaan tersendatnya dari antrean lama, jadi
+	 * psi_enqueue() harus mendaftarkannya ulang, bukan memperlakukannya
+	 * sebagai bangun biasa.
+	 */
+	unsigned sched_psi_wake_requeue:1;
+#endif
 
 	unsigned long atomic_flags; /* Flags needing atomic access. */
 
@@ -1830,6 +1844,12 @@ static inline void sched_set_io_is_busy(int val) {};
 #define PF_KTHREAD	0x00200000	/* I am a kernel thread */
 #define PF_RANDOMIZE	0x00400000	/* randomize virtual address space */
 #define PF_SWAPWRITE	0x00800000	/* Allowed to write to swap */
+/*
+ * PF_MEMSTALL memakai 0x00000001, BUKAN 0x01000000 seperti di hulu -- bit itu
+ * sudah dipakai PF_SPREAD_PAGE di pohon ini. 0x00000001 satu-satunya yang
+ * masih bebas.
+ */
+#define PF_MEMSTALL	0x00000001	/* Stalled due to lack of memory */
 #define PF_SPREAD_PAGE	0x01000000	/* Spread page cache over cpuset */
 #define PF_SPREAD_SLAB	0x02000000	/* Spread some slab caches over cpuset */
 #define PF_NO_SETAFFINITY 0x04000000	/* Userland is not allowed to meddle with cpus_allowed */

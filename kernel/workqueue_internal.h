@@ -28,6 +28,12 @@ struct worker {
 
 	struct work_struct	*current_work;	/* L: work being processed */
 	work_func_t		current_func;	/* L: current_work's fn */
+	/*
+	 * Fungsi terakhir yang dijalankan worker ini. Dipakai PSI untuk
+	 * mengenali worker agregasinya sendiri yang hendak tidur, supaya tidak
+	 * saling membangunkan tanpa henti (kernel/sched/psi.c:765).
+	 */
+	work_func_t		last_func;
 	struct pool_workqueue	*current_pwq; /* L: current_work's pwq */
 	bool			desc_valid;	/* ->desc is valid */
 	struct list_head	scheduled;	/* L: scheduled works */
@@ -67,6 +73,7 @@ static inline struct worker *current_wq_worker(void)
  * sched.c and workqueue.c.
  */
 void wq_worker_waking_up(struct task_struct *task, int cpu);
+work_func_t wq_worker_last_func(struct task_struct *task);
 struct task_struct *wq_worker_sleeping(struct task_struct *task, int cpu);
 
 #endif /* _KERNEL_WORKQUEUE_INTERNAL_H */
