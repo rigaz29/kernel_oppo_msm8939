@@ -9,7 +9,9 @@
  */
 
 #include <keys/user-type.h>
+#include <linux/hashtable.h>
 #include <linux/scatterlist.h>
+#include <crypto/algapi.h>
 #include <linux/ratelimit.h>
 #include <crypto/aes.h>
 #include <crypto/sha.h>
@@ -172,7 +174,7 @@ static const struct {
 
 static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
 				 const char **cipher_str_ret, int *keysize_ret,
-				 int *ivsize_ret)
+				 int *ivsize_ret, u32 *mode_ret)
 {
 	u32 mode;
 
@@ -196,7 +198,172 @@ static int determine_cipher_type(struct fscrypt_info *ci, struct inode *inode,
 	*cipher_str_ret = available_modes[mode].cipher_str;
 	*keysize_ret = available_modes[mode].keysize;
 	*ivsize_ret = available_modes[mode].ivsize;
+	*mode_ret = mode;
 	return 0;
+}
+
+/*
+ * Tabel kunci master untuk kebijakan DIRECT_KEY.
+ *
+ * Pada DIRECT_KEY seluruh berkas memakai kunci master yang SAMA -- yang
+ * membedakan antar berkas dipindah ke IV (lihat fscrypt_generate_iv). Tanpa
+ * tabel ini setiap inode mengalokasikan tfm sendiri lalu memanggil setkey
+ * sendiri, padahal kuncinya identik. Terukur di perangkat: /proc/crypto
+ * menunjukkan refcnt 3067 untuk adiantum(xchacha12,aes) -- sekitar tiga ribu
+ * salinan konteks kunci yang isinya sama persis.
+ *
+ * Biayanya dua arah:
+ *   - memori. Tiap instans membawa empat tfm bersarang; yang terbesar kunci NH
+ *     1072 byte (nhpoly1305_key). Di perangkat 1,9 GB dengan RAM bebas ~40 MB,
+ *     itu terasa.
+ *   - waktu. setkey Adiantum menurunkan 1136 byte keystream XChaCha12
+ *     (adiantum.c:123, BLOCKCIPHER_KEY_SIZE + HASH_KEY_SIZE) ditambah jadwal
+ *     kunci AES dan setkey nhpoly1305 -- diulang tiap inode dibuka.
+ *
+ * Diadaptasi dari acroreiser/android_kernel_lenovo_a6010, yang memecahkan
+ * masalah yang sama di kernel 3.10.108 yang sama (fs/ext4/crypto_key.c:23,95,
+ * 256-335). Bedanya hanya letak: mereka di stack enkripsi milik ext4, kita di
+ * fs/crypto bersama yang dipakai f2fs. Mainline menyebutnya fscrypt_direct_key
+ * di fs/crypto/keysetup_v1.c.
+ */
+static DEFINE_HASHTABLE(fscrypt_master_keys, 6);	/* 6 bit = 64 bucket */
+static DEFINE_SPINLOCK(fscrypt_master_keys_lock);
+
+struct fscrypt_master_key {
+	struct hlist_node mk_node;
+	atomic_t mk_refcount;
+	u32 mk_mode;
+	int mk_keysize;
+	struct crypto_ablkcipher *mk_ctfm;
+	u8 mk_descriptor[FS_KEY_DESCRIPTOR_SIZE];
+	u8 mk_raw[FS_MAX_KEY_SIZE];
+};
+
+static void free_master_key(struct fscrypt_master_key *mk)
+{
+	if (mk) {
+		crypto_free_ablkcipher(mk->mk_ctfm);
+		kzfree(mk);
+	}
+}
+
+static void put_master_key(struct fscrypt_master_key *mk)
+{
+	if (!atomic_dec_and_lock(&mk->mk_refcount, &fscrypt_master_keys_lock))
+		return;
+	hash_del(&mk->mk_node);
+	spin_unlock(&fscrypt_master_keys_lock);
+
+	free_master_key(mk);
+}
+
+static struct crypto_ablkcipher *allocate_ablkcipher(const char *cipher_str,
+						     const u8 *raw_key,
+						     int keysize,
+						     const struct inode *inode)
+{
+	struct crypto_ablkcipher *ctfm;
+	int err;
+
+	ctfm = crypto_alloc_ablkcipher(cipher_str, 0, 0);
+	if (!ctfm || IS_ERR(ctfm)) {
+		err = ctfm ? PTR_ERR(ctfm) : -ENOMEM;
+		pr_debug("%s: error %d (inode %lu) allocating crypto tfm\n",
+			 __func__, err, inode->i_ino);
+		return ERR_PTR(err);
+	}
+	crypto_ablkcipher_clear_flags(ctfm, ~0);
+	crypto_ablkcipher_set_flags(ctfm, CRYPTO_TFM_REQ_WEAK_KEY);
+	/*
+	 * Kalau kunci yang diberikan lebih panjang dari keysize, hanya keysize
+	 * byte pertama yang dipakai.
+	 */
+	err = crypto_ablkcipher_setkey(ctfm, raw_key, keysize);
+	if (err) {
+		crypto_free_ablkcipher(ctfm);
+		return ERR_PTR(err);
+	}
+	return ctfm;
+}
+
+/*
+ * Cari atau sisipkan kunci master ke dalam tabel. Kalau ketemu, ia dikembalikan
+ * dengan refcount dinaikkan dan 'to_insert' dibebaskan bila bukan NULL. Kalau
+ * tidak ketemu, 'to_insert' disisipkan dan dikembalikan; NULL bila to_insert
+ * juga NULL.
+ */
+static struct fscrypt_master_key *
+find_or_insert_master_key(struct fscrypt_master_key *to_insert,
+			  const u8 *raw_key, u32 mode, int keysize,
+			  const struct fscrypt_info *ci)
+{
+	unsigned long hash_key;
+	struct fscrypt_master_key *mk;
+
+	/*
+	 * Hati-hati: tabel di-hash berdasarkan DESKRIPTOR, bukan kunci mentah,
+	 * dan perbandingan kunci memakai crypto_memneq(). Kalau di-hash dari
+	 * kunci mentah, waktu pencariannya bisa membocorkan isi kunci.
+	 */
+	BUILD_BUG_ON(sizeof(hash_key) > FS_KEY_DESCRIPTOR_SIZE);
+	memcpy(&hash_key, ci->ci_master_key, sizeof(hash_key));
+
+	spin_lock(&fscrypt_master_keys_lock);
+	hash_for_each_possible(fscrypt_master_keys, mk, mk_node, hash_key) {
+		if (memcmp(ci->ci_master_key, mk->mk_descriptor,
+			   FS_KEY_DESCRIPTOR_SIZE) != 0)
+			continue;
+		if (mode != mk->mk_mode || keysize != mk->mk_keysize)
+			continue;
+		if (crypto_memneq(raw_key, mk->mk_raw, keysize))
+			continue;
+		/* tfm yang sama untuk (deskriptor, mode, kunci) yang sama */
+		atomic_inc(&mk->mk_refcount);
+		spin_unlock(&fscrypt_master_keys_lock);
+		free_master_key(to_insert);
+		return mk;
+	}
+	if (to_insert)
+		hash_add(fscrypt_master_keys, &to_insert->mk_node, hash_key);
+	spin_unlock(&fscrypt_master_keys_lock);
+	return to_insert;
+}
+
+static struct fscrypt_master_key *
+get_master_key(const struct fscrypt_info *ci, const char *cipher_str,
+	       const u8 *raw_key, u32 mode, int keysize,
+	       const struct inode *inode)
+{
+	struct fscrypt_master_key *mk;
+	int err;
+
+	/* Sudah ada tfm untuk kunci ini? */
+	mk = find_or_insert_master_key(NULL, raw_key, mode, keysize, ci);
+	if (mk)
+		return mk;
+
+	/* Belum -- buat satu. */
+	mk = kzalloc(sizeof(*mk), GFP_NOFS);
+	if (!mk)
+		return ERR_PTR(-ENOMEM);
+	atomic_set(&mk->mk_refcount, 1);
+	mk->mk_mode = mode;
+	mk->mk_keysize = keysize;
+	mk->mk_ctfm = allocate_ablkcipher(cipher_str, raw_key, keysize, inode);
+	if (IS_ERR(mk->mk_ctfm)) {
+		err = PTR_ERR(mk->mk_ctfm);
+		mk->mk_ctfm = NULL;
+		free_master_key(mk);
+		return ERR_PTR(err);
+	}
+	memcpy(mk->mk_descriptor, ci->ci_master_key, FS_KEY_DESCRIPTOR_SIZE);
+	memcpy(mk->mk_raw, raw_key, keysize);
+
+	/*
+	 * Balapan: thread lain bisa menyisipkan kunci yang sama sementara kita
+	 * mengalokasikan. find_or_insert menangani itu -- punya kita dibuang.
+	 */
+	return find_or_insert_master_key(mk, raw_key, mode, keysize, ci);
 }
 
 static void put_crypt_info(struct fscrypt_info *ci)
@@ -204,7 +371,14 @@ static void put_crypt_info(struct fscrypt_info *ci)
 	if (!ci)
 		return;
 
-	crypto_free_ablkcipher(ci->ci_ctfm);
+	/*
+	 * Pada DIRECT_KEY ci_ctfm dimiliki bersama lewat tabel kunci master;
+	 * yang boleh kita lepas hanya rujukannya, bukan tfm-nya.
+	 */
+	if (ci->ci_mk)
+		put_master_key(ci->ci_mk);
+	else
+		crypto_free_ablkcipher(ci->ci_ctfm);
 	crypto_free_cipher(ci->ci_essiv_tfm);
 	kmem_cache_free(fscrypt_info_cachep, ci);
 }
@@ -283,6 +457,7 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	const char *cipher_str;
 	int keysize;
 	int ivsize;
+	u32 mode;
 	u8 *raw_key = NULL;
 	int res;
 
@@ -323,11 +498,12 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	crypt_info->ci_filename_mode = ctx.filenames_encryption_mode;
 	crypt_info->ci_ctfm = NULL;
 	crypt_info->ci_essiv_tfm = NULL;
+	crypt_info->ci_mk = NULL;
 	memcpy(crypt_info->ci_master_key, ctx.master_key_descriptor,
 				sizeof(crypt_info->ci_master_key));
 
 	res = determine_cipher_type(crypt_info, inode, &cipher_str, &keysize,
-				    &ivsize);
+				    &ivsize, &mode);
 	if (res)
 		goto out;
 	crypt_info->ci_mode_ivsize = ivsize;
@@ -367,23 +543,25 @@ int fscrypt_get_encryption_info(struct inode *inode)
 	} else if (res) {
 		goto out;
 	}
-	ctfm = crypto_alloc_ablkcipher(cipher_str, 0, 0);
-	if (!ctfm || IS_ERR(ctfm)) {
-		res = ctfm ? PTR_ERR(ctfm) : -ENOMEM;
-		pr_debug("%s: error %d (inode %lu) allocating crypto tfm\n",
-			 __func__, res, inode->i_ino);
-		goto out;
+	if (crypt_info->ci_flags & FS_POLICY_FLAG_DIRECT_KEY) {
+		struct fscrypt_master_key *mk;
+
+		mk = get_master_key(crypt_info, cipher_str, raw_key, mode,
+				    keysize, inode);
+		if (IS_ERR(mk)) {
+			res = PTR_ERR(mk);
+			goto out;
+		}
+		crypt_info->ci_mk = mk;
+		crypt_info->ci_ctfm = mk->mk_ctfm;
+	} else {
+		ctfm = allocate_ablkcipher(cipher_str, raw_key, keysize, inode);
+		if (IS_ERR(ctfm)) {
+			res = PTR_ERR(ctfm);
+			goto out;
+		}
+		crypt_info->ci_ctfm = ctfm;
 	}
-	crypt_info->ci_ctfm = ctfm;
-	crypto_ablkcipher_clear_flags(ctfm, ~0);
-	crypto_ablkcipher_set_flags(ctfm, CRYPTO_TFM_REQ_WEAK_KEY);
-	/*
-	 * if the provided key is longer than keysize, we use the first
-	 * keysize bytes of the derived key only
-	 */
-	res = crypto_ablkcipher_setkey(ctfm, raw_key, keysize);
-	if (res)
-		goto out;
 
 	if (S_ISREG(inode->i_mode) &&
 	    crypt_info->ci_data_mode == FS_ENCRYPTION_MODE_AES_128_CBC) {

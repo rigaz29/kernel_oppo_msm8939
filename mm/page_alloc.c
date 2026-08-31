@@ -48,6 +48,7 @@
 #include <linux/backing-dev.h>
 #include <linux/fault-inject.h>
 #include <linux/page-isolation.h>
+#include <linux/psi.h>
 #include <linux/page_cgroup.h>
 #include <linux/debugobjects.h>
 #include <linux/kmemleak.h>
@@ -2258,6 +2259,8 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 	bool *contended_compaction, bool *deferred_compaction,
 	unsigned long *did_some_progress)
 {
+	unsigned long pflags;
+
 	if (!order)
 		return NULL;
 
@@ -2266,11 +2269,13 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 		return NULL;
 	}
 
+	psi_memstall_enter(&pflags);
 	current->flags |= PF_MEMALLOC;
 	*did_some_progress = try_to_compact_pages(zonelist, order, gfp_mask,
 						nodemask, sync_migration,
 						contended_compaction);
 	current->flags &= ~PF_MEMALLOC;
+	psi_memstall_leave(&pflags);
 
 	if (*did_some_progress != COMPACT_SKIPPED) {
 		struct page *page;
@@ -2331,12 +2336,14 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order, struct zonelist *zonelist,
 		  nodemask_t *nodemask)
 {
 	struct reclaim_state reclaim_state;
+	unsigned long pflags;
 	int progress;
 
 	cond_resched();
 
 	/* We now go into synchronous reclaim */
 	cpuset_memory_pressure_bump();
+	psi_memstall_enter(&pflags);
 	current->flags |= PF_MEMALLOC;
 	lockdep_set_current_reclaim_state(gfp_mask);
 	reclaim_state.reclaimed_slab = 0;
@@ -2347,6 +2354,7 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order, struct zonelist *zonelist,
 	current->reclaim_state = NULL;
 	lockdep_clear_current_reclaim_state();
 	current->flags &= ~PF_MEMALLOC;
+	psi_memstall_leave(&pflags);
 
 	cond_resched();
 
@@ -2747,7 +2755,7 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 		return NULL;
 
 retry_cpuset:
-	cpuset_mems_cookie = get_mems_allowed();
+	cpuset_mems_cookie = read_mems_allowed_begin();
 
 	/* The preferred zone is used for statistics later */
 	first_zones_zonelist(zonelist, high_zoneidx,
@@ -2785,7 +2793,7 @@ out:
 	 * the mask is being updated. If a page allocation is about to fail,
 	 * check if the cpuset changed during allocation and if so, retry.
 	 */
-	if (unlikely(!put_mems_allowed(cpuset_mems_cookie) && !page))
+	if (unlikely(!page && read_mems_allowed_retry(cpuset_mems_cookie)))
 		goto retry_cpuset;
 
 	memcg_kmem_commit_charge(page, memcg, order);
@@ -3052,9 +3060,9 @@ bool skip_free_areas_node(unsigned int flags, int nid)
 		goto out;
 
 	do {
-		cpuset_mems_cookie = get_mems_allowed();
+		cpuset_mems_cookie = read_mems_allowed_begin();
 		ret = !node_isset(nid, cpuset_current_mems_allowed);
-	} while (!put_mems_allowed(cpuset_mems_cookie));
+	} while (read_mems_allowed_retry(cpuset_mems_cookie));
 out:
 	return ret;
 }
@@ -6372,12 +6380,14 @@ bool is_free_buddy_page(struct page *page)
 
 static const struct trace_print_flags pageflag_names[] = {
 	{1UL << PG_locked,		"locked"	},
+	{1UL << PG_waiters,		"waiters"	},
 	{1UL << PG_error,		"error"		},
 	{1UL << PG_referenced,		"referenced"	},
 	{1UL << PG_uptodate,		"uptodate"	},
 	{1UL << PG_dirty,		"dirty"		},
 	{1UL << PG_lru,			"lru"		},
 	{1UL << PG_active,		"active"	},
+	{1UL << PG_workingset,		"workingset"	},
 	{1UL << PG_slab,		"slab"		},
 	{1UL << PG_owner_priv_1,	"owner_priv_1"	},
 	{1UL << PG_arch_1,		"arch_1"	},

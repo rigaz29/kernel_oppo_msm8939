@@ -377,7 +377,7 @@ int sysctl_sched_rt_runtime = 950000;
 /*
  * __task_rq_lock - lock the rq @p resides on.
  */
-static inline struct rq *__task_rq_lock(struct task_struct *p)
+struct rq *__task_rq_lock(struct task_struct *p)
 	__acquires(rq->lock)
 {
 	struct rq *rq;
@@ -413,7 +413,7 @@ static struct rq *task_rq_lock(struct task_struct *p, unsigned long *flags)
 	}
 }
 
-static void __task_rq_unlock(struct rq *rq)
+void __task_rq_unlock(struct rq *rq)
 	__releases(rq->lock)
 {
 	raw_spin_unlock(&rq->lock);
@@ -431,7 +431,7 @@ task_rq_unlock(struct rq *rq, struct task_struct *p, unsigned long *flags)
 /*
  * this_rq_lock - lock this runqueue and disable interrupts.
  */
-static struct rq *this_rq_lock(void)
+struct rq *this_rq_lock(void)
 	__acquires(rq->lock)
 {
 	struct rq *rq;
@@ -914,6 +914,7 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_queued(p);
+	psi_enqueue(p, flags & ENQUEUE_WAKEUP);
 	p->sched_class->enqueue_task(rq, p, flags);
 	trace_sched_enq_deq_task(p, 1, cpumask_bits(&p->cpus_allowed)[0]);
 	inc_cumulative_runnable_avg(rq, p);
@@ -923,6 +924,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
 	sched_info_dequeued(p);
+	psi_dequeue(p, flags & DEQUEUE_SLEEP);
 	p->sched_class->dequeue_task(rq, p, flags);
 	trace_sched_enq_deq_task(p, 0, cpumask_bits(&p->cpus_allowed)[0]);
 	dec_cumulative_runnable_avg(rq, p);
@@ -3276,6 +3278,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	src_cpu = task_cpu(p);
 	if (src_cpu != cpu) {
 		wake_flags |= WF_MIGRATED;
+		psi_ttwu_dequeue(p);
 		set_task_cpu(p, cpu);
 	}
 #endif /* CONFIG_SMP */
@@ -3999,7 +4002,7 @@ static long calc_load_fold_active(struct rq *this_rq)
 /*
  * a1 = a0 * e + a * (1 - e)
  */
-static unsigned long
+unsigned long
 calc_load(unsigned long load, unsigned long exp, unsigned long active)
 {
 	load *= exp;
@@ -4186,7 +4189,7 @@ fixed_power_int(unsigned long x, unsigned int frac_bits, unsigned int n)
  *     S_n := \Sum x^i = -------------
  *             i=0          1 - x
  */
-static unsigned long
+unsigned long
 calc_load_n(unsigned long load, unsigned long exp,
 	    unsigned long active, unsigned int n)
 {
@@ -4583,6 +4586,7 @@ void scheduler_tick(void)
 	update_cpu_load_active(rq);
 	curr->sched_class->task_tick(rq, curr, 0);
 	update_task_ravg(rq->curr, rq, TASK_UPDATE, sched_clock(), 0);
+	psi_task_tick(rq);
 	raw_spin_unlock(&rq->lock);
 
 	perf_event_task_tick();
