@@ -21,7 +21,7 @@ struct pagevec {
 };
 
 void __pagevec_release(struct pagevec *pvec);
-void __pagevec_lru_add(struct pagevec *pvec, enum lru_list lru);
+void __pagevec_lru_add(struct pagevec *pvec);
 unsigned __pagevec_lookup(struct pagevec *pvec, struct address_space *mapping,
 			  pgoff_t start, unsigned nr_pages, pgoff_t *indices);
 void pagevec_remove_exceptionals(struct pagevec *pvec);
@@ -67,24 +67,33 @@ static inline void pagevec_release(struct pagevec *pvec)
 		__pagevec_release(pvec);
 }
 
+/*
+ * Sejak "mm: remove lru parameter from __lru_cache_add", daftar LRU tujuan
+ * ditentukan dari flag halaman itu sendiri lewat page_lru(), bukan dari
+ * argumen. Keempat pembungkus di bawah karena itu tinggal alias.
+ *
+ * Hulu membuangnya sekalian; di sini keduanya dipertahankan supaya
+ * fs/nfs/dir.c dan fs/cachefiles/rdwr.c tetap bisa dibangun kalau suatu saat
+ * dinyalakan -- keduanya tidak ada di defconfig perangkat ini.
+ */
 static inline void __pagevec_lru_add_anon(struct pagevec *pvec)
 {
-	__pagevec_lru_add(pvec, LRU_INACTIVE_ANON);
+	__pagevec_lru_add(pvec);
 }
 
 static inline void __pagevec_lru_add_active_anon(struct pagevec *pvec)
 {
-	__pagevec_lru_add(pvec, LRU_ACTIVE_ANON);
+	__pagevec_lru_add(pvec);
 }
 
 static inline void __pagevec_lru_add_file(struct pagevec *pvec)
 {
-	__pagevec_lru_add(pvec, LRU_INACTIVE_FILE);
+	__pagevec_lru_add(pvec);
 }
 
 static inline void __pagevec_lru_add_active_file(struct pagevec *pvec)
 {
-	__pagevec_lru_add(pvec, LRU_ACTIVE_FILE);
+	__pagevec_lru_add(pvec);
 }
 
 static inline void pagevec_lru_add_file(struct pagevec *pvec)
