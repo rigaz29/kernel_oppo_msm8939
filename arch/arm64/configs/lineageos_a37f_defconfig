@@ -384,6 +384,24 @@ CONFIG_REGULATOR_CPR=y
 CONFIG_MEDIA_SUPPORT=y
 CONFIG_MEDIA_CAMERA_SUPPORT=y
 CONFIG_MEDIA_RADIO_SUPPORT=y
+# Radio FM. CONFIG_MEDIA_RADIO_SUPPORT saja hanya menyalakan KERANGKA v4l2
+# radio, bukan drivernya -- akibatnya /dev/radio0 tidak pernah dibuat dan
+# aplikasi FM gagal menyala meski userspace-nya lengkap (libfmjni.so,
+# libfmq.so, com.android.fmradio semuanya ada dan berjalan).
+#
+# Kedua baris ini HILANG saat porting ke defconfig LineageOS. Sumber drivernya
+# selalu ada di pohon (drivers/media/radio/radio-iris.c dan
+# radio-iris-transport.c), dan defconfig CAF asli di pohon yang sama
+# mengaktifkannya: arch/arm64/configs/msm-perf_defconfig:358-359.
+# acroreiser juga menyalakannya.
+#
+# Prasyaratnya sudah terpenuhi tanpa tambahan apa pun:
+#   CONFIG_VIDEO_DEV=y, CONFIG_VIDEO_V4L2=y  (terpilih lewat MSMB_CAMERA)
+#   CONFIG_MSM_SMD=y                          transport ke chip
+#   CONFIG_WCNSS_CORE_PRONTO=y                chip FM ada di kombo WCNSS
+# radio-iris-transport.c:180 membuka kanal SMD "APPS_FM" ke SMD_APPS_WCNSS.
+CONFIG_RADIO_IRIS=y
+CONFIG_RADIO_IRIS_TRANSPORT=y
 CONFIG_MEDIA_CONTROLLER=y
 CONFIG_VIDEO_V4L2_SUBDEV_API=y
 CONFIG_VIDEOBUF2_MSM_MEM=y
