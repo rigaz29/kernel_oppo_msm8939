@@ -631,6 +631,11 @@ CONFIG_F2FS_FS_SECURITY=y
 #
 # FS_ENCRYPTION menyeleksi CRYPTO_AES/CBC/ECB/XTS/CTS/CTR/SHA256 dan KEYS
 # sendiri, jadi tidak perlu didaftarkan di sini.
+# PSI: informasi tersendat (pressure stall). lmkd userspace memakainya lewat
+# /proc/pressure/memory; tanpa ini ia jatuh ke jalur vmpressure yang lebih
+# kasar. Dukungan cgroup dibuang pada backport ini -- lihat include/linux/psi.h.
+CONFIG_PSI=y
+# CONFIG_PSI_DEFAULT_DISABLED is not set
 CONFIG_F2FS_FS_ENCRYPTION=y
 CONFIG_FS_ENCRYPTION=y
 CONFIG_NLS_CODEPAGE_437=y

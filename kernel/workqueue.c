@@ -890,6 +890,22 @@ struct task_struct *wq_worker_sleeping(struct task_struct *task, int cpu)
 }
 
 /**
+ * wq_worker_last_func - ambil fungsi kerja terakhir milik worker
+ * @task: task yang ditanyakan
+ *
+ * Dipanggil dari kode scheduler (psi_task_change) sambil memegang rq->lock.
+ *
+ * Return: fungsi kerja terakhir yang dijalankan worker ini, NULL kalau belum
+ * pernah menjalankan apa pun.
+ */
+work_func_t wq_worker_last_func(struct task_struct *task)
+{
+	struct worker *worker = kthread_data(task);
+
+	return worker->last_func;
+}
+
+/**
  * worker_set_flags - set worker flags and adjust nr_running accordingly
  * @worker: self
  * @flags: flags to set
@@ -2238,6 +2254,7 @@ __acquires(&pool->lock)
 	/* we're done with it, release */
 	hash_del(&worker->hentry);
 	worker->current_work = NULL;
+	worker->last_func = worker->current_func;
 	worker->current_func = NULL;
 	worker->current_pwq = NULL;
 	worker->desc_valid = false;

@@ -1130,9 +1130,7 @@ static ssize_t fuse_fill_write_pages(struct fuse_req *req,
 		if (mapping_writably_mapped(mapping))
 			flush_dcache_page(page);
 
-		pagefault_disable();
 		tmp = iov_iter_copy_from_user_atomic(page, ii, offset, bytes);
-		pagefault_enable();
 		flush_dcache_page(page);
 
 		mark_page_accessed(page);
@@ -2656,6 +2654,9 @@ fuse_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
 	pos = offset;
 	inode = file->f_mapping->host;
 	i_size = i_size_read(inode);
+
+	if ((rw == READ) && (offset > i_size))
+		return 0;
 
 	/* optimization for short read */
 	if (async_dio && rw != WRITE && offset + count > i_size) {
