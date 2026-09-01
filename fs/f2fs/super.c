@@ -1549,7 +1549,7 @@ static int f2fs_enable_quotas(struct super_block *sb)
 {
 	int type, err = 0;
 	unsigned long qf_inum;
-	bool quota_mopt[MAXQUOTAS] = {
+	bool quota_mopt[F2FS_MAXQUOTAS] = {
 		test_opt(F2FS_SB(sb), USRQUOTA),
 		test_opt(F2FS_SB(sb), GRPQUOTA),
 #if 0	/* not support */
@@ -1558,7 +1558,7 @@ static int f2fs_enable_quotas(struct super_block *sb)
 	};
 
 	sb_dqopt(sb)->flags |= DQUOT_QUOTA_SYS_FILE;
-	for (type = 0; type < MAXQUOTAS; type++) {
+	for (type = 0; type < F2FS_MAXQUOTAS; type++) {
 		qf_inum = f2fs_qf_ino(sb, type);
 		if (qf_inum) {
 			err = f2fs_quota_enable(sb, type, QFMT_VFS_V1,
