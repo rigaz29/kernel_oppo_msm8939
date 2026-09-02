@@ -1324,6 +1324,23 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 
 	p->default_timer_slack_ns = current->timer_slack_ns;
 
+#ifdef CONFIG_PSI
+	/*
+	 * WAJIB. dup_task_struct() menyalin seluruh task_struct induk, jadi
+	 * tanpa baris ini anak mewarisi psi_flags induknya -- termasuk
+	 * TSK_RUNNING, karena induk memang sedang berjalan saat fork.
+	 * psi_enqueue() lalu menyetelnya untuk KEDUA kalinya dan
+	 * psi_group_change() menaikkan tasks[NR_RUNNING] tanpa pernah ada
+	 * penurunan pasangannya.
+	 *
+	 * Akibatnya tasks[NR_RUNNING] > 1 menjadi benar selamanya, dan
+	 * test_state() membuat PSI_CPU_SOME tersangkut ~100% meski CPU
+	 * menganggur; PSI_IO_FULL dan PSI_MEM_FULL, yang menuntut
+	 * !tasks[NR_RUNNING], ikut mati.
+	 */
+	p->psi_flags = 0;
+#endif
+
 	task_io_accounting_init(&p->ioac);
 	acct_clear_integrals(p);
 
