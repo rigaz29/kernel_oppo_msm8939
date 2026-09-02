@@ -812,6 +812,28 @@ void psi_task_change(struct task_struct *task, int clear, int set)
 		psi_bug = 1;
 	}
 
+	/*
+	 * Jaga invarian: groupc->tasks[] harus selalu sama dengan jumlah task
+	 * yang benar-benar memegang flag itu. Hulu tidak butuh ini karena di
+	 * sana PSI hidup sejak task pertama dienqueue. Di pohon ini tidak:
+	 * psi_disabled mulai bernilai true dan baru dimatikan di ujung
+	 * psi_init() (core_initcall), sehingga puluhan kernel thread sudah
+	 * duduk di runqueue tanpa pernah terhitung.
+	 *
+	 * Dequeue pertama tiap task itu akan mengurangi pencacah dari NOL.
+	 * groupc->tasks[] bertipe unsigned int, jadi hasilnya membungkus ke
+	 * 4294967295 dan test_state() membuat PSI_CPU_SOME (tasks[NR_RUNNING]
+	 * > 1) benar SELAMANYA -- tekanan CPU tersangkut ~100% meski CPU
+	 * menganggur, dan PSI_IO_FULL serta PSI_MEM_FULL, yang menuntut
+	 * !tasks[NR_RUNNING], mati total.
+	 *
+	 * Menyaring clear/set terhadap psi_flags membuat peralihan itu sembuh
+	 * sendiri: dequeue pertama menjadi tanpa-operasi, enqueue berikutnya
+	 * mendaftarkan task dengan benar, dan sesudah itu semuanya konsisten.
+	 */
+	clear &= task->psi_flags;
+	set &= ~task->psi_flags;
+
 	task->psi_flags &= ~clear;
 	task->psi_flags |= set;
 
