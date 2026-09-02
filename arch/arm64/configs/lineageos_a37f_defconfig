@@ -45,6 +45,18 @@ CONFIG_PANIC_TIMEOUT=5
 # Bisa diubah runtime: /proc/sys/kernel/hung_task_timeout_secs
 CONFIG_DETECT_HUNG_TASK=y
 CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=90
+# Ring buffer kernel: 2^19 = 512 KB, dari default 2^17 = 128 KB.
+#
+# 128 KB terlalu kecil untuk perangkat ini. Terukur: pada 7,5 jam uptime,
+# `dmesg` hanya memuat 2 menit terakhir, dan log boot sudah hilang jauh
+# sebelum sempat dibaca -- dua kali menggagalkan diagnosis PSI.
+#
+# Penyebab utamanya sudah ditekan terpisah (dump register syscall tak dikenal
+# di arch/arm64/kernel/traps.c), tapi 128 KB tetap sempit untuk kernel yang
+# juga menulis audit SELinux permissive terus-menerus.
+#
+# Ongkosnya 384 KB RAM statis dari 1887 MB -- 0,02%.
+CONFIG_LOG_BUF_SHIFT=19
 CONFIG_KALLSYMS=y
 CONFIG_DEBUG_FS=y
 CONFIG_CC_STACKPROTECTOR=y

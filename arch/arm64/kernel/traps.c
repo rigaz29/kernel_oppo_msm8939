@@ -362,13 +362,29 @@ asmlinkage long do_ni_syscall(struct pt_regs *regs)
 	}
 #endif
 
-	if (show_unhandled_signals && printk_ratelimit()) {
+	/*
+	 * Satu baris saja -- TANPA dump_instr() dan __show_regs().
+	 *
+	 * Di pohon ini syscall tak dikenal adalah kejadian yang DIHARAPKAN,
+	 * bukan anomali. Userspace Android 16 memanggil bpf() (386) dan
+	 * epoll_pwait2() (441), yang memang tidak ada di 3.10, lalu menangani
+	 * -ENOSYS dengan benar: bionic mundur ke epoll_pwait
+	 * (libc/bionic/sys_epoll.cpp:83), dan rangkaian patch BPF-less
+	 * menangani sisanya. Tidak ada proses yang mati karenanya.
+	 *
+	 * Yang tersisa hanyalah ongkos lognya. Terukur di perangkat: 45
+	 * kejadian menulis 2.045 baris dalam 120 detik, menggulung habis ring
+	 * buffer maupun console-ramoops -- dua kali membuat diagnosis mustahil
+	 * karena log boot tidak tersisa sama sekali.
+	 *
+	 * Baris ringkasnya dipertahankan supaya syscall hilang yang BARU tetap
+	 * terlihat. show_unhandled_signals sengaja tidak disentuh: jalur di
+	 * :337 masih memerlukannya untuk SIGSEGV dan kawan-kawan, yang memang
+	 * anomali sungguhan dan pantas dapat dump penuh.
+	 */
+	if (show_unhandled_signals && printk_ratelimit())
 		pr_info("%s[%d]: syscall %d\n", current->comm,
 			task_pid_nr(current), (int)regs->syscallno);
-		dump_instr("", regs);
-		if (user_mode(regs))
-			__show_regs(regs);
-	}
 
 	return sys_ni_syscall();
 }
