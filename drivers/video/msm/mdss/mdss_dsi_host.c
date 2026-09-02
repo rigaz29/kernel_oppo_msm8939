@@ -2316,7 +2316,37 @@ static int dsi_event_thread(void *data)
 	spin_lock_init(&ev->event_lock);
 
 	while (1) {
-		wait_event(ev->event_q, (ev->event_pndx != ev->event_gndx));
+		/*
+		 * wait_event_interruptible, BUKAN wait_event.
+		 *
+		 * wait_event() memarkir thread di TASK_UNINTERRUPTIBLE
+		 * (include/linux/wait.h:181), dan antrean ini hampir selalu
+		 * kosong -- isinya kejadian error DSI (DSI_EV_PLL_UNLOCKED,
+		 * DSI_EV_MDP_FIFO_UNDERFLOW) yang panel sehat tidak pernah
+		 * hasilkan. Jadi thread ini duduk di status D selamanya.
+		 *
+		 * kernel/hung_task.c:168 menandai SETIAP task D yang tidak
+		 * context-switch selama hung_task_timeout_secs, tanpa peduli ia
+		 * menunggu I/O sungguhan atau cuma menganggur. Akibatnya di
+		 * perangkat:
+		 *
+		 *   INFO: task mdss_dsi_event:120 blocked for more than 90 seconds
+		 *
+		 * berulang tiap 90 detik, ~7 baris sekali muncul, dan permanen
+		 * menambah 1 pada load average -- angka yang sempat menyesatkan
+		 * diagnosis karena load terbaca 5-7 saat CPU 99% menganggur.
+		 *
+		 * Status S membuat detektor mengabaikannya. Aman di sini karena
+		 * dsi_event_thread dijalankan lewat kthread_run biasa tanpa
+		 * allow_signal(), dan kthreadd sudah memanggil ignore_signals()
+		 * untuk seluruh anaknya (kernel/kthread.c:454), sehingga tidak
+		 * ada sinyal yang bisa memutus tunggu ini. Penjagaan `continue`
+		 * tetap dipasang supaya keluar-lebih-awal tidak pernah
+		 * memajukan event_gndx tanpa ada kejadian sungguhan.
+		 */
+		if (wait_event_interruptible(ev->event_q,
+				(ev->event_pndx != ev->event_gndx)))
+			continue;
 		spin_lock_irqsave(&ev->event_lock, flag);
 		evq = &ev->todo_list[ev->event_gndx++];
 		todo = evq->todo;
