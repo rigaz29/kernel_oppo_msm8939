@@ -1393,7 +1393,7 @@ static int tcp_v4_conn_req_fastopen(struct sock *sk,
 	req->num_timeout = 0;
 	req->sk = NULL;
 
-	child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb, req, NULL);
+	child = inet_csk(sk)->icsk_af_ops->syn_recv_sock(sk, skb, req, NULL, NULL);
 	if (child == NULL) {
 		NET_INC_STATS_BH(sock_net(sk),
 				 LINUX_MIB_TCPFASTOPENPASSIVEFAIL);
@@ -1655,7 +1655,9 @@ EXPORT_SYMBOL(tcp_v4_conn_request);
  */
 struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 				  struct request_sock *req,
-				  struct dst_entry *dst)
+				  struct dst_entry *dst,
+				  void (*opt_child_init)(struct sock *newsk,
+							 const struct sock *sk))
 {
 	struct inet_request_sock *ireq;
 	struct inet_sock *newinet;
@@ -1702,6 +1704,10 @@ struct sock *tcp_v4_syn_recv_sock(struct sock *sk, struct sk_buff *skb,
 	}
 	sk_setup_caps(newsk, dst);
 
+#if IS_ENABLED(CONFIG_IPV6)
+	if (opt_child_init)
+		opt_child_init(newsk, sk);
+#endif
 	tcp_mtup_init(newsk);
 	tcp_sync_mss(newsk, dst_mtu(dst));
 	newtp->advmss = dst_metric_advmss(dst);

@@ -51,7 +51,7 @@ static inline struct sock *get_cookie_sock(struct sock *sk, struct sk_buff *skb,
 	struct inet_connection_sock *icsk = inet_csk(sk);
 	struct sock *child;
 
-	child = icsk->icsk_af_ops->syn_recv_sock(sk, skb, req, dst);
+	child = icsk->icsk_af_ops->syn_recv_sock(sk, skb, req, dst, NULL);
 	if (child)
 		inet_csk_reqsk_queue_add(sk, req, child);
 	else
