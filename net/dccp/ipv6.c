@@ -452,7 +452,9 @@ drop:
 static struct sock *dccp_v6_request_recv_sock(struct sock *sk,
 					      struct sk_buff *skb,
 					      struct request_sock *req,
-					      struct dst_entry *dst)
+					      struct dst_entry *dst,
+					      void (*opt_child_init)(struct sock *newsk,
+								     const struct sock *sk))
 {
 	struct inet6_request_sock *ireq6 = inet6_rsk(req);
 	struct ipv6_pinfo *newnp, *np = inet6_sk(sk);
@@ -465,7 +467,8 @@ static struct sock *dccp_v6_request_recv_sock(struct sock *sk,
 		/*
 		 *	v6 mapped
 		 */
-		newsk = dccp_v4_request_recv_sock(sk, skb, req, dst);
+		newsk = dccp_v4_request_recv_sock(sk, skb, req, dst,
+						  opt_child_init);
 		if (newsk == NULL)
 			return NULL;
 
