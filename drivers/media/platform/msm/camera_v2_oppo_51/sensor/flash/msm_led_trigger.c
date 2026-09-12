@@ -231,9 +231,13 @@ static int32_t msm_led_trigger_probe(struct platform_device *pdev)
 			led_trigger_register_simple(fctrl.flash_trigger_name[i],
 				&fctrl.flash_trigger[i]);
 
-			if (flashtype == GPIO_FLASH)
-				if (fctrl.flash_trigger[i])
-					temp = fctrl.flash_trigger[i];
+			/*
+			 * [A37] Syarat GPIO_FLASH dicabut. Trigger flash disimpan
+			 * untuk semua tipe, supaya torch punya cadangan ketika
+			 * pendaftarannya sendiri gagal.
+			 */
+			if (fctrl.flash_trigger[i])
+				temp = fctrl.flash_trigger[i];
 		}
 
 	}
@@ -296,9 +300,37 @@ static int32_t msm_led_trigger_probe(struct platform_device *pdev)
 			led_trigger_register_simple(fctrl.torch_trigger_name[i],
 				&fctrl.torch_trigger[i]);
 
-			if (flashtype == GPIO_FLASH)
-				if (temp && !fctrl.torch_trigger[i])
-					fctrl.torch_trigger[i] = temp;
+			/*
+			 * [A37] Syarat GPIO_FLASH dicabut di sini juga.
+			 *
+			 * VARIAN INILAH yang dikompilasi pada A37:
+			 * CONFIG_OPPO_CAMERA_51=y sementara
+			 * CONFIG_MSMB_CAMERA_DEFAULT tidak diset, sehingga
+			 * camera_v2/ tidak ikut dibangun (lihat
+			 * drivers/media/platform/msm/Makefile:10-15).
+			 *
+			 * qcom,flash-source dan qcom,torch-source menunjuk node
+			 * yang SAMA (&lm3642), jadi keduanya membawa
+			 * linux,default-trigger yang sama. Pendaftaran torch
+			 * gagal EEXIST karena flash sudah memakai nama itu:
+			 *
+			 *   LED trigger flashlight-trigger failed to register (-17)
+			 *   msm_led_torch_create_classdev:76 Invalid
+			 *     fctrl->torch_trigger[0]
+			 *
+			 * torch_trigger[0] tetap NULL, led_classdev_register tidak
+			 * pernah dipanggil, dan /sys/class/leds tidak pernah punya
+			 * node torch -- senter tidak bisa dinyalakan sama sekali.
+			 *
+			 * flash-type perangkat ini LED_FLASH (1), bukan GPIO_FLASH
+			 * (3), jadi jalan mundur ini tidak pernah terpakai. Torch
+			 * dan flash memang LED yang sama di sini, sehingga memakai
+			 * ulang trigger flash adalah perilaku yang benar -- dan itu
+			 * persis yang dilakukan driver msm_flash.c yang lebih baru,
+			 * tanpa syarat tipe apa pun.
+			 */
+			if (temp && !fctrl.torch_trigger[i])
+				fctrl.torch_trigger[i] = temp;
 		}
 	}
 
