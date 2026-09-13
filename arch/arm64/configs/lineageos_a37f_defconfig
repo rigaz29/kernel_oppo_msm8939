@@ -62,10 +62,35 @@ CONFIG_DEBUG_FS=y
 CONFIG_CC_STACKPROTECTOR=y
 CONFIG_CC_STACKPROTECTOR_REGULAR=y
 CONFIG_EMBEDDED=y
-CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION=y
-CONFIG_ANDROID_TREBLE_BYPASS_KERNEL_VERSION_CHECKS=y
-CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION_PREFIX="3.17"
-CONFIG_ANDROID_TREBLE_SPOOF_BPF_KERNEL_VERSION_PREFIX="3.17"
+# Spoof versi kernel DIMATIKAN untuk LineageOS 20 (Android 13).
+#
+# Ia dibuat untuk LOS 22, tempat basis tidak lagi menyediakan fork art/ sehingga
+# gerbang memfd_create ART harus dibohongi dari kernel. LOS 20 menyelesaikan
+# masalah yang sama dari sisi lain, dan pemeriksaan satu per satu menunjukkan
+# spoof ini tidak membeli apa pun di sini:
+#
+#   ART memfd     patches/official/art/0001 mencabut pemeriksaannya secara
+#                 COMPILE-TIME lewat HAS_MEMFD_BACKPORT -- uname() tidak pernah
+#                 dipanggil sama sekali. Sama untuk external/perfetto.
+#   bpfloader     system/bpf membandingkan dengan 4.14 / 4.19 / 5.4
+#                 (libbpf_android/Loader.cpp:650,767,777). 3.10 maupun 3.17
+#                 sama-sama di bawahnya; nol perubahan perilaku.
+#   init          ro.kernel.version dipakai init.rc:651-657 dengan pencocokan
+#                 PERSIS 4.9 / 4.14 / 4.19 / 5.4. Tidak satu pun cocok dengan
+#                 3.10 maupun 3.17.
+#   init modul    LoadKernelModules memakai versi untuk memilih /lib/modules/<v>,
+#                 tetapi kernel ini tanpa CONFIG_MODULES dan ROM tidak mengirim
+#                 /lib/modules sama sekali -- init langsung melewatinya.
+#
+# DAN ia meleset dari sasaran utamanya di build 64-bit: penyaringnya mencocokkan
+# current->comm == "zygote", sedangkan app_main.cpp:167 menamai zygote 64-bit
+# "zygote64" pada build __LP64__. Jadi zygote utama tidak pernah ikut ter-spoof.
+#
+# Yang tersisa hanyalah ONGKOSNYA: ro.kernel.version melaporkan 3.17 padahal
+# kernelnya 3.10, dan itu menyesatkan diagnosis berikutnya.
+#
+# NYALAKAN LAGI hanya kalau ada konsumen baru yang terbukti menuntutnya.
+# CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION is not set
 # CONFIG_SLUB_DEBUG is not set
 # CONFIG_PROFILING is not set
 CONFIG_ARCH_MMAP_RND_COMPAT_BITS=16
@@ -755,9 +780,8 @@ CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
 CONFIG_CRYPTO_AES_ARM64_NEON_BLK=y
 CONFIG_QMI_ENCDEC=y
 
-# Bootloader msm8916 menuntut device tree DITEMPELKAN ke image kernel.
-# mkbootimg Android 16 sudah membuang opsi --dt ("ambiguous option: --dt could
-# match --dtb, --dtb_offset"), jadi penempelan dilakukan oleh kernel sendiri --
-# pendekatan yang sama dipakai a6010 di lineage-23.2 (BOARD_KERNEL_IMAGE_NAME
-# := zImage-dtb; A37 arm64 sehingga padanannya Image-dtb).
-# Lihat arch/arm64/boot/Makefile:32 dan arch/arm64/Kconfig:595.
+# CATATAN: blok komentar soal Image-dtb / penempelan DTB DIBUANG di sini.
+# Konfigurasinya sendiri sudah di-revert hulu (e1a4070), dan alasannya khusus
+# Android 16 yang mkbootimg-nya membuang opsi --dt. LineageOS 20 masih memakai
+# tabel DT terpisah lewat dtbtool di device tree, jadi komentar itu hanya
+# menyesatkan pembaca berikutnya.
