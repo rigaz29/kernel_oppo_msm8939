@@ -92,7 +92,31 @@ CONFIG_EMBEDDED=y
 # NYALAKAN LAGI hanya kalau ada konsumen baru yang terbukti menuntutnya.
 # CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION is not set
 # CONFIG_SLUB_DEBUG is not set
-# CONFIG_PROFILING is not set
+# PROFILING dinyalakan 15 September 2026 BUKAN untuk profiling, melainkan karena
+# CONFIG_UID_CPUTIME (baris di bawah) bergantung padanya:
+#
+#   drivers/misc/Kconfig:622-624
+#     config UID_CPUTIME
+#         tristate "Per-UID cpu time statistics"
+#         depends on PROFILING
+#
+# Tanpa syarat itu terpenuhi, Kconfig membuang UID_CPUTIME DIAM-DIAM walau
+# defconfig menyetelnya =y: uid_cputime.o tidak pernah dibangun dan
+# /proc/uid_cputime tidak pernah ada. Terukur di perangkat sebagai 27 galat tiap
+# boot:
+#
+#   E KernelCpuUidUserSysTimeReader: failed to remove uids 99000 - 99000
+#   java.io.FileNotFoundException: /proc/uid_cputime/remove_uid_range: ENOENT
+#
+# Akibatnya layar penggunaan baterai tidak bisa mengatribusikan waktu CPU ke
+# aplikasi. Baterainya tetap terukur; rinciannya per aplikasi yang hilang.
+#
+# Baris "is not set" sebelumnya adalah bawaan defconfig awal (59585edea76),
+# bukan keputusan yang pernah diambil proyek ini -- diperiksa lewat git log -S.
+#
+# OPROFILE sengaja TIDAK ikut dinyalakan. PROFILING hanya membuatnya bisa
+# DIPILIH (arch/Kconfig:7); ia tetap mati.
+CONFIG_PROFILING=y
 CONFIG_ARCH_MMAP_RND_COMPAT_BITS=16
 CONFIG_PARTITION_ADVANCED=y
 # CONFIG_IOSCHED_TEST is not set
