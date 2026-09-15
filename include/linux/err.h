@@ -62,4 +62,20 @@ static inline int __must_check PTR_RET(const void *ptr)
 
 #endif
 
+/* A37: dari upstream 4b01a9673a45. */
+static inline int __must_check PTR_ERR_OR_ZERO(__force const void *ptr)
+{
+	if (IS_ERR(ptr))
+		return PTR_ERR(ptr);
+	else
+		return 0;
+}
+/*
+ * A37: #define senama sengaja ditambahkan. Beberapa berkas di pohon ini
+ * membawa salinan lokalnya sendiri yang dijaga `#ifndef PTR_ERR_OR_ZERO`
+ * (mis. fs/f2fs/node.c:28) -- penjaga itu hanya bekerja bila ada MAKRO,
+ * bukan fungsi inline. Tanpa baris ini keduanya terdefinisi dan build gagal.
+ */
+#define PTR_ERR_OR_ZERO PTR_ERR_OR_ZERO
+
 #endif /* _LINUX_ERR_H */
