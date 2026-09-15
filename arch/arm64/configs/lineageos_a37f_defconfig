@@ -26,7 +26,37 @@ CONFIG_PID_NS=y
 CONFIG_BLK_DEV_INITRD=y
 CONFIG_RD_BZIP2=y
 CONFIG_RD_LZMA=y
-CONFIG_CC_OPTIMIZE_FOR_SIZE=y
+# CONFIG_CC_OPTIMIZE_FOR_SIZE dimatikan 15 September 2026, SETELAH DIUKUR.
+#
+# Dengan `y` kernel dikompilasi -Os, yang menukar kecepatan demi ukuran: loop
+# unrolling dimatikan dan inlining dibatasi.
+#
+# Ongkosnya: Image 18.742.648 -> 20.540.792 byte, +1,80 MB (+9,6%). Bukan
+# halangan -- partisi boot 32 MiB (BoardConfig.mk:305), boot.img 20,5 MB, sisa
+# ~11 MB sesudah perubahan ini.
+#
+# A/B di perangkat, commit sumber yang SAMA (ef880a42db6), frekuensi dikunci
+# governor performance:
+#
+#   ping flood loopback 20.000 paket   -Os: 1395/1397/1397 ms  (n=3)
+#                                      -O2: 1321/1317/1311/1306/1321/1307/1313 ms (n=7)
+#                                      -> -5,9%, dua sebaran TIDAK BERIRISAN
+#
+#   laju syscall (dd bs=1 x 1 juta)    -Os: 1,7173 s (n=3)
+#                                      -O2: 1,7126 s (n=8)
+#                                      -> -0,27%, DI DALAM derau: tidak berubah
+#
+# Kedua hasil itu konsisten satu sama lain dan itulah yang membuatnya
+# dipercaya: -O2 mempercepat kode C kernel (tumpukan jaringan), dan tidak
+# menyentuh jalur masuk/keluar syscall yang didominasi assembly.
+#
+# Suhu saat uji 44 C, jadi bukan efek termal.
+#
+# JANGAN pakai angka waktu boot untuk membenarkan ini. ro.boottime.init memang
+# turun 8,50 -> 6,84 detik, tetapi pembandingnya cacat: yang 8,50 diukur pada
+# boot pertama sesudah flash ROM penuh (ada penyiapan f2fs dan dexopt), yang
+# 6,84 sesudah flash kernel saja. Bukan perbandingan terkendali.
+# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set
 CONFIG_PANIC_TIMEOUT=5
 # Deteksi task menggantung — menangkap init (atau proses mana pun) yang terblokir
 # di D state, misalnya macet mount atau I/O. Setelah timeout kernel panic, lalu
