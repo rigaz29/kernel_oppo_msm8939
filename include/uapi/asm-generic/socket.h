@@ -76,4 +76,14 @@
 
 #define SO_SELECT_ERR_QUEUE	45
 
+/*
+ * A37: nomor 57 adalah nomor upstream, dan itulah yang dipakai bionic
+ * (bionic/libc/kernel/uapi/asm-generic/socket.h:82). Nomor 46-56 sengaja
+ * dilewati -- opsi-opsi itu memang belum ada di kernel ini.
+ *
+ * Dibutuhkan netd: BpfHandler memanggil getsockopt(SO_COOKIE) dan tanpa ini
+ * mendapat ENOPROTOOPT ("Failed to get socket cookie: Protocol not available").
+ */
+#define SO_COOKIE		57
+
 #endif /* __ASM_GENERIC_SOCKET_H */

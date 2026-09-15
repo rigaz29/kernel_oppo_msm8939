@@ -133,6 +133,12 @@ CONFIG_PROFILING=y
 CONFIG_BPF=y
 CONFIG_BPF_SYSCALL=y
 
+# Match iptables "bpf". net/netfilter/xt_bpf.c SUDAH ada di pohon, hanya belum
+# dibangun. Program skfilter/*/xtbpf milik netd menempel lewat jalur ini dan
+# TIDAK butuh cgroup v2 -- berbeda dari cgroupskb yang menuntut fd cgroup v2
+# yang tidak ada di 3.10. Jalur termurah menuju akuntansi per-aplikasi.
+CONFIG_NETFILTER_XT_MATCH_BPF=y
+
 # PERF_EVENT_ARRAY, CGROUP_ARRAY, STACK_TRACE, DEVMAP: butuh API perf/cgroup
 # 4.6 yang tidak ada di sini, dan tidak satu pun dipakai Android 13.
 # CONFIG_BPF_FD_ARRAY_MAPS is not set

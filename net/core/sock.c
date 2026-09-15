@@ -125,6 +125,7 @@
 #include <net/net_namespace.h>
 #include <net/request_sock.h>
 #include <net/sock.h>
+#include <linux/sock_diag.h>
 #include <linux/net_tstamp.h>
 #include <net/xfrm.h>
 #include <linux/ipsec.h>
@@ -976,6 +977,7 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 
 	union {
 		int val;
+		u64 val64;		/* A37: untuk SO_COOKIE */
 		struct linger ling;
 		struct timeval tm;
 	} v;
@@ -1200,6 +1202,15 @@ int sock_getsockopt(struct socket *sock, int level, int optname,
 
 	case SO_SELECT_ERR_QUEUE:
 		v.val = sock_flag(sk, SOCK_SELECT_ERR_QUEUE);
+		break;
+
+	case SO_COOKIE:
+		/* A37: dari upstream 5daab9db7b65 ("net: Add SO_COOKIE socket
+		 * option"). sock_gen_cookie() sudah ditambahkan bersama eBPF. */
+		lv = sizeof(u64);
+		if (len < lv)
+			return -EINVAL;
+		v.val64 = sock_gen_cookie(sk);
 		break;
 
 	default:
