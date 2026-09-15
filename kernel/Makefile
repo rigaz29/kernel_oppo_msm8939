@@ -23,6 +23,7 @@ CFLAGS_REMOVE_irq_work.o = -pg
 endif
 
 obj-y += sched/
+obj-y += bpf/
 obj-y += power/
 obj-y += cpu/
 obj-y += irq/
