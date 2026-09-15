@@ -39,6 +39,16 @@ static inline u64 div64_u64(u64 dividend, u64 divisor)
 }
 
 /**
+ * div64_u64_rem - unsigned 64bit divide with 64bit divisor and remainder
+ * A37: dari upstream (eb9e9bc0ea1c), dibutuhkan kernel/bpf/core.c untuk BPF_MOD.
+ */
+static inline u64 div64_u64_rem(u64 dividend, u64 divisor, u64 *remainder)
+{
+	*remainder = dividend % divisor;
+	return dividend / divisor;
+}
+
+/**
  * div64_s64 - signed 64bit divide with 64bit divisor
  */
 static inline s64 div64_s64(s64 dividend, s64 divisor)

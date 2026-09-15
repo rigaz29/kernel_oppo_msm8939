@@ -1631,19 +1631,12 @@ static inline void sk_filter_release(struct sk_filter *fp)
 		call_rcu(&fp->rcu, sk_filter_release_rcu);
 }
 
-static inline void sk_filter_uncharge(struct sock *sk, struct sk_filter *fp)
-{
-	unsigned int size = sk_filter_len(fp);
-
-	atomic_sub(size, &sk->sk_omem_alloc);
-	sk_filter_release(fp);
-}
-
-static inline void sk_filter_charge(struct sock *sk, struct sk_filter *fp)
-{
-	atomic_inc(&fp->refcnt);
-	atomic_add(sk_filter_len(fp), &sk->sk_omem_alloc);
-}
+/*
+ * A37: sk_filter_charge() dan sk_filter_uncharge() TIDAK lagi didefinisikan di
+ * sini. Keduanya kini fungsi biasa di net/core/filter.c dan dideklarasikan di
+ * include/linux/filter.h -- mengikuti upstream, karena akuntansi memori filter
+ * berubah saat sk_filter dipisah dari bpf_prog.
+ */
 
 /*
  * Socket reference counting postulates.

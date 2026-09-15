@@ -45,7 +45,14 @@ static inline int apply_relocate(Elf_Shdr *sechdrs,
 				 unsigned int relsec,
 				 struct module *me)
 {
-	printk(KERN_ERR "module %s: REL relocation unsupported\n", me->name);
+	/*
+	 * A37: JANGAN dereference me->name. struct module hanya lengkap di dalam
+	 * #ifdef CONFIG_MODULES (module.h:187), sedangkan stub ini justru dipakai
+	 * saat CONFIG_MODULES=n. Bug laten 3.10, baru terpicu setelah
+	 * kernel/bpf/core.c menyertakan berkas ini; jalur ini tak terjangkau
+	 * tanpa modul.
+	 */
+	printk(KERN_ERR "module: relocation unsupported\n");
 	return -ENOEXEC;
 }
 #endif
@@ -67,7 +74,14 @@ static inline int apply_relocate_add(Elf_Shdr *sechdrs,
 				     unsigned int relsec,
 				     struct module *me)
 {
-	printk(KERN_ERR "module %s: REL relocation unsupported\n", me->name);
+	/*
+	 * A37: JANGAN dereference me->name. struct module hanya lengkap di dalam
+	 * #ifdef CONFIG_MODULES (module.h:187), sedangkan stub ini justru dipakai
+	 * saat CONFIG_MODULES=n. Bug laten 3.10, baru terpicu setelah
+	 * kernel/bpf/core.c menyertakan berkas ini; jalur ini tak terjangkau
+	 * tanpa modul.
+	 */
+	printk(KERN_ERR "module: relocation unsupported\n");
 	return -ENOEXEC;
 }
 #endif

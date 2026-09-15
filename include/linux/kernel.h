@@ -181,6 +181,17 @@ extern int _cond_resched(void);
 # define might_sleep() do { might_resched(); } while (0)
 #endif
 
+/*
+ * A37: dari upstream 5a2807191343. Mengubah u64 dari userspace jadi pointer
+ * __user dengan typecheck; dipakai kernel/bpf/syscall.c.
+ */
+#define u64_to_user_ptr(x) (		\
+{					\
+	typecheck(u64, x);		\
+	(void __user *)(uintptr_t)x;	\
+}					\
+)
+
 #define might_sleep_if(cond) do { if (cond) might_sleep(); } while (0)
 
 /*

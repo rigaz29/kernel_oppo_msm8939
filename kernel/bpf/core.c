@@ -1464,9 +1464,19 @@ void bpf_prog_array_free(struct bpf_prog_array __rcu *progs)
 bool bpf_prog_array_is_empty(struct bpf_prog_array __rcu *progs)
 {
 	struct bpf_prog **prog = progs->progs;
+
+	/*
+	 * A37, BUG DIPERBAIKI 15 Sep 2026. Sumber backport (a6010) menulis
+	 * `if (prog != &dummy_bpf_prog.prog)`, membandingkan struct bpf_prog **
+	 * dengan struct bpf_prog * -- kompilator menandainya "comparison of
+	 * distinct pointer types lacks a cast". Perbandingan itu SELALU tidak
+	 * sama, sehingga fungsi ini melaporkan array berisi dummy saja sebagai
+	 * TIDAK kosong, kebalikan dari maksudnya. Yang benar mendereference
+	 * prog, seperti upstream.
+	 */
 	for (; *prog; prog++)
-		if (prog != &dummy_bpf_prog.prog)
-				return false;
+		if (*prog != &dummy_bpf_prog.prog)
+			return false;
 
 	return true;
 }

@@ -148,6 +148,56 @@ void prandom_seed(u32 entropy)
 }
 EXPORT_SYMBOL(prandom_seed);
 
+/**
+ *	prandom_seed_full_state - seed setiap state per-CPU dari RNG kernel
+ *	@pcpu_state: array per-CPU struct rnd_state
+ *
+ *	A37: padanan upstream 6d31920246c4 untuk kernel ini. Upstream memakai
+ *	Tausworthe-113 dengan s1..s4; struct rnd_state di 3.10 masih
+ *	Tausworthe-88 dengan s1..s3, jadi penyemaian dilakukan lewat
+ *	prandom_seed_state() yang memang API kernel ini -- BUKAN dengan menulis
+ *	s4 yang tidak ada.
+ *
+ *	Dipakai bpf_user_rnd_init_once() untuk memisahkan RNG yang terlihat
+ *	program BPF tak-berhak dari prandom_u32() milik kernel.
+ */
+void prandom_seed_full_state(struct rnd_state __percpu *pcpu_state)
+{
+	int i;
+
+	for_each_possible_cpu(i) {
+		struct rnd_state *state = per_cpu_ptr(pcpu_state, i);
+		u64 seed;
+
+		get_random_bytes(&seed, sizeof(seed));
+		prandom_seed_state(state, seed);
+
+		/* panaskan, seperti prandom_init() */
+		prandom_u32_state(state);
+		prandom_u32_state(state);
+		prandom_u32_state(state);
+	}
+}
+EXPORT_SYMBOL(prandom_seed_full_state);
+
+/**
+ *	prandom_init_once - semai pcpu_state tepat satu kali
+ *	@pcpu_state: array per-CPU struct rnd_state
+ */
+void prandom_init_once(struct rnd_state __percpu *pcpu_state)
+{
+	static DEFINE_SPINLOCK(lock);
+	static bool done;
+
+	spin_lock(&lock);
+	if (!done) {
+		prandom_seed_full_state(pcpu_state);
+		done = true;
+	}
+	spin_unlock(&lock);
+}
+EXPORT_SYMBOL(prandom_init_once);
+
 /*
  *	Generate some initially weak seeding values to allow
  *	to start the prandom_u32() engine.
