@@ -95,3 +95,7 @@ x509.genkey
 
 # Generated source files
 smd_rpc_sym.c
+
+# A37: log build tidak boleh ikut ter-commit
+sys.log
+*.log
