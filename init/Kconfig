@@ -1257,6 +1257,19 @@ config CC_OPTIMIZE_FOR_SIZE
 config SYSCTL
 	bool
 
+config BPF
+	bool
+
+config BPF_SYSCALL
+	bool "Enable bpf() system call"
+	select ANON_INODES
+	select BPF
+	default n
+	help
+	  Enable the bpf() system call that allows to manipulate eBPF
+	  programs and maps via file descriptors. (A37: dicoba 15 Sep 2026)
+
+
 config ANON_INODES
 	bool
 
