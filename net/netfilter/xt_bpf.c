@@ -23,11 +23,25 @@ MODULE_ALIAS("ip6t_bpf");
 static int bpf_mt_check(const struct xt_mtchk_param *par)
 {
 	struct xt_bpf_info *info = par->matchinfo;
-	struct sock_fprog program;
+	struct sock_fprog_kern program;
 
+	/*
+	 * A37: dua perubahan sekaligus, mengikuti upstream.
+	 *
+	 * Pertama, API: sk_unattached_filter_create() menjadi bpf_prog_create().
+	 *
+	 * Kedua -- dan ini memperbaiki bug: versi lama meng-cast
+	 * info->bpf_program menjadi `struct sock_filter __user *`, padahal array
+	 * itu ADA DI MEMORI KERNEL (xtables sudah menyalin seluruh matchinfo dari
+	 * userspace). sk_unattached_filter_create() lalu melakukan
+	 * copy_from_user() atas pointer kernel. bpf_prog_create() menerima
+	 * sock_fprog_kern dan memperlakukannya sebagai pointer kernel -- yang
+	 * memang benar.
+	 */
 	program.len = info->bpf_program_num_elem;
-	program.filter = (struct sock_filter __user *) info->bpf_program;
-	if (sk_unattached_filter_create(&info->filter, &program)) {
+	program.filter = info->bpf_program;
+
+	if (bpf_prog_create(&info->filter, &program)) {
 		pr_info("bpf: check failed: parse error\n");
 		return -EINVAL;
 	}
@@ -39,13 +53,13 @@ static bool bpf_mt(const struct sk_buff *skb, struct xt_action_param *par)
 {
 	const struct xt_bpf_info *info = par->matchinfo;
 
-	return SK_RUN_FILTER(info->filter, skb);
+	return BPF_PROG_RUN(info->filter, skb);
 }
 
 static void bpf_mt_destroy(const struct xt_mtdtor_param *par)
 {
 	const struct xt_bpf_info *info = par->matchinfo;
-	sk_unattached_filter_destroy(info->filter);
+	bpf_prog_destroy(info->filter);
 }
 
 static struct xt_match bpf_mt_reg __read_mostly = {
