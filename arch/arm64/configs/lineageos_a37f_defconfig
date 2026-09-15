@@ -93,17 +93,16 @@ CONFIG_EMBEDDED=y
 # CONFIG_ANDROID_TREBLE_SPOOF_KERNEL_VERSION is not set
 # CONFIG_SLUB_DEBUG is not set
 # PROFILING dinyalakan 15 September 2026 BUKAN untuk profiling, melainkan karena
-# CONFIG_UID_CPUTIME (baris di bawah) bergantung padanya:
+# CONFIG_UID_SYS_STATS (baris di bawah) bergantung padanya:
 #
-#   drivers/misc/Kconfig:622-624
-#     config UID_CPUTIME
-#         tristate "Per-UID cpu time statistics"
+#   drivers/misc/Kconfig
+#     config UID_SYS_STATS
+#         tristate "Per-UID statistics"
 #         depends on PROFILING
 #
-# Tanpa syarat itu terpenuhi, Kconfig membuang UID_CPUTIME DIAM-DIAM walau
-# defconfig menyetelnya =y: uid_cputime.o tidak pernah dibangun dan
-# /proc/uid_cputime tidak pernah ada. Terukur di perangkat sebagai 27 galat tiap
-# boot:
+# Tanpa syarat itu terpenuhi, Kconfig membuangnya DIAM-DIAM walau defconfig
+# menyetelnya =y: objeknya tidak pernah dibangun dan /proc/uid_cputime tidak
+# pernah ada. Terukur di perangkat sebagai 27 galat tiap boot:
 #
 #   E KernelCpuUidUserSysTimeReader: failed to remove uids 99000 - 99000
 #   java.io.FileNotFoundException: /proc/uid_cputime/remove_uid_range: ENOENT
@@ -113,6 +112,9 @@ CONFIG_EMBEDDED=y
 #
 # Baris "is not set" sebelumnya adalah bawaan defconfig awal (59585edea76),
 # bukan keputusan yang pernah diambil proyek ini -- diperiksa lewat git log -S.
+#
+# 15 Sep 2026, kemudian: UID_CPUTIME diganti UID_SYS_STATS, penerusnya di AOSP
+# common. Syarat PROFILING-nya sama persis, jadi catatan di atas tetap berlaku.
 #
 # OPROFILE sengaja TIDAK ikut dinyalakan. PROFILING hanya membuatnya bisa
 # DIPILIH (arch/Kconfig:7); ia tetap mati.
@@ -311,7 +313,11 @@ CONFIG_BLK_DEV_RAM=y
 CONFIG_BLK_DEV_RAM_SIZE=8192
 CONFIG_UID_STAT=y
 CONFIG_QSEECOM=y
-CONFIG_UID_CPUTIME=y
+# Pengganti UID_CPUTIME (di-backport dari a6010, 15 Sep 2026). Menyediakan
+# /proc/uid_cputime/* yang persis sama, DITAMBAH /proc/uid_io/stats yang dibaca
+# storaged dan /proc/uid_procstat/set yang ditulis system_server untuk memisah
+# I/O latar depan dari latar belakang. Keduanya tidak boleh menyala bersamaan.
+CONFIG_UID_SYS_STATS=y
 CONFIG_SCSI=y
 CONFIG_SCSI_TGT=y
 CONFIG_BLK_DEV_SD=y
