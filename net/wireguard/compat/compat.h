@@ -943,8 +943,11 @@ static inline void skb_mark_not_on_list(struct sk_buff *skb)
 #define chacha20_neon zinc_chacha20_neon
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0) && !defined(ISRHEL7)
+/* A37: kernel ini kini menyediakan skb_ensure_writable() sendiri (dibutuhkan
+ * net/core/filter.c), jadi shim di bawah harus mundur agar tidak bentrok. */
 #include <linux/skbuff.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0) && !defined(ISRHEL7) && \
+    !defined(HAVE_SKB_ENSURE_WRITABLE)
 static inline int skb_ensure_writable(struct sk_buff *skb, int write_len)
 {
 	if (!pskb_may_pull(skb, write_len))

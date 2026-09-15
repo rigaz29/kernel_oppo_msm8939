@@ -1599,7 +1599,9 @@ static unsigned int run_filter(const struct sk_buff *skb,
 	rcu_read_lock();
 	filter = rcu_dereference(sk->sk_filter);
 	if (filter != NULL)
-		res = SK_RUN_FILTER(filter, skb);
+		/* A37: API baru -- SK_RUN_FILTER() diganti, dan cb harus
+		 * dibersihkan karena af_packet memakai skb->cb sendiri. */
+		res = bpf_prog_run_clear_cb(filter->prog, skb);
 	rcu_read_unlock();
 
 	return res;
