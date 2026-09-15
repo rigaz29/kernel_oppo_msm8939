@@ -78,7 +78,8 @@ static inline int seccomp_mode(struct seccomp *s)
 #ifdef CONFIG_SECCOMP_FILTER
 extern void put_seccomp_filter(struct task_struct *tsk);
 extern void get_seccomp_filter(struct task_struct *tsk);
-extern u32 seccomp_bpf_load(int off);
+/* A37: seccomp_bpf_load() dibuang -- program eBPF membaca struct
+ * seccomp_data langsung dari konteksnya. Lihat populate_seccomp_data(). */
 #else  /* CONFIG_SECCOMP_FILTER */
 static inline void put_seccomp_filter(struct task_struct *tsk)
 {
