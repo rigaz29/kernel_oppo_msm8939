@@ -119,6 +119,30 @@ CONFIG_EMBEDDED=y
 # OPROFILE sengaja TIDAK ikut dinyalakan. PROFILING hanya membuatnya bisa
 # DIPILIH (arch/Kconfig:7); ia tetap mati.
 CONFIG_PROFILING=y
+
+# eBPF, dinyalakan 15 September 2026 (cabang wip/ebpf).
+#
+# Tujuannya atribusi data jaringan per aplikasi: netd Android 13 memuat program
+# cgroupskb/ingress/stats dan egress/stats yang min_kver-nya KVER_NONE, jadi
+# TIDAK perlu memalsukan versi kernel.
+#
+# ⚠️ UJI PERTAMA: ro.kernel.ebpf.supported TETAP false di device.mk, sehingga
+# bpfloader masih digerbangi mati. Yang diuji tahap ini adalah apakah kernelnya
+# BOOT -- konversi seccomp, perubahan struct sock/sk_buff, dan filter.c baru
+# semuanya aktif di tiap boot terlepas dari ada tidaknya program BPF.
+CONFIG_BPF=y
+CONFIG_BPF_SYSCALL=y
+
+# PERF_EVENT_ARRAY, CGROUP_ARRAY, STACK_TRACE, DEVMAP: butuh API perf/cgroup
+# 4.6 yang tidak ada di sini, dan tidak satu pun dipakai Android 13.
+# CONFIG_BPF_FD_ARRAY_MAPS is not set
+
+# bpf_tcp_sock(): struct tcp_sock 3.10 tidak punya field yang dibutuhkan.
+# CONFIG_BPF_TCP_SOCK is not set
+
+# Pemasangan program ke cgroup: mesinnya belum disambungkan ke cgroup
+# subsystem kernel ini. WAJIB menyala sebelum program netd bisa dimuat.
+# CONFIG_CGROUP_BPF is not set
 CONFIG_ARCH_MMAP_RND_COMPAT_BITS=16
 CONFIG_PARTITION_ADVANCED=y
 # CONFIG_IOSCHED_TEST is not set
