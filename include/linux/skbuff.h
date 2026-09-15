@@ -32,6 +32,7 @@
 #include <linux/hrtimer.h>
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
+#include <uapi/linux/if_packet.h>	/* A37: PACKET_OTHERHOST utk skb_pkt_type_ok() */
 #include <net/flow_keys.h>
 
 /* Don't change this without changing skb_csum_unnecessary! */
@@ -432,11 +433,40 @@ struct sk_buff {
 	};
 	__u32			priority;
 	kmemcheck_bitfield_begin(flags1);
+/*
+ * A37: penanda offset untuk penulis ulang instruksi BPF (net/core/filter.c),
+ * mengikuti pola upstream.
+ *
+ * ⚠️ CLONED_MASK DIHITUNG ULANG untuk tata letak kernel INI, bukan disalin dari
+ * a6010. Di sana urutannya `cloned:1` lebih dulu sehingga masknya 1 (bit 0);
+ * di sini `local_df:1` yang pertama dan `cloned` ada di BIT 1. Memakai mask 1
+ * akan membuat program BPF membaca local_df alih-alih cloned -- skb clone
+ * dikira bukan clone, lalu bpf_skb_pull_data() dilewati dan data skb bersama
+ * disentuh tanpa dilinearkan.
+ */
+#ifdef __BIG_ENDIAN_BITFIELD
+#define CLONED_MASK		(1 << 6)	/* local_df=bit7, cloned=bit6 */
+#else
+#define CLONED_MASK		(1 << 1)	/* local_df=bit0, cloned=bit1 */
+#endif
+#define CLONED_OFFSET()		offsetof(struct sk_buff, __cloned_offset)
+
+	__u8			__cloned_offset[0];
 	__u8			local_df:1,
 				cloned:1,
 				ip_summed:2,
 				nohdr:1,
 				nfctinfo:3;
+
+/* pkt_type:3 ada di bit 0-2, sama seperti upstream, jadi mask ini tidak berubah */
+#ifdef __BIG_ENDIAN_BITFIELD
+#define PKT_TYPE_MAX		(7 << 5)
+#else
+#define PKT_TYPE_MAX		7
+#endif
+#define PKT_TYPE_OFFSET()	offsetof(struct sk_buff, __pkt_type_offset)
+
+	__u8			__pkt_type_offset[0];
 	__u8			pkt_type:3,
 				fclone:2,
 				ipvs_property:1,
@@ -2369,6 +2399,102 @@ static inline void skb_postpull_rcsum(struct sk_buff *skb,
 }
 
 unsigned char *skb_pull_rcsum(struct sk_buff *skb, unsigned int len);
+
+/* ---- A37: helper yang dibutuhkan net/core/filter.c, dari upstream ---- */
+
+static inline u32 skb_mac_header_len(const struct sk_buff *skb)
+{
+	return skb->network_header - skb->mac_header;
+}
+
+static inline void skb_gso_reset(struct sk_buff *skb)
+{
+	skb_shinfo(skb)->gso_size = 0;
+	skb_shinfo(skb)->gso_segs = 0;
+	skb_shinfo(skb)->gso_type = 0;
+}
+
+static inline bool skb_pkt_type_ok(u32 ptype)
+{
+	return ptype <= PACKET_OTHERHOST;
+}
+
+/* Kernel ini menamai field-nya rxhash/l4_rxhash, bukan hash/l4_hash. */
+static inline void skb_clear_hash(struct sk_buff *skb)
+{
+	skb->rxhash = 0;
+	skb->l4_rxhash = 0;
+}
+
+static inline __u32 skb_get_hash(struct sk_buff *skb)
+{
+	return skb_get_rxhash(skb);
+}
+
+static __always_inline void
+__skb_postpull_rcsum(struct sk_buff *skb, const void *start, unsigned int len,
+		     unsigned int off)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->csum = csum_block_sub(skb->csum,
+					   csum_partial(start, len, 0), off);
+	else if (skb->ip_summed == CHECKSUM_PARTIAL &&
+		 skb_checksum_start_offset(skb) < 0)
+		skb->ip_summed = CHECKSUM_NONE;
+}
+
+static __always_inline void
+__skb_postpush_rcsum(struct sk_buff *skb, const void *start, unsigned int len,
+		     unsigned int off)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->csum = csum_block_add(skb->csum,
+					   csum_partial(start, len, 0), off);
+}
+
+static inline void skb_postpush_rcsum(struct sk_buff *skb,
+				      const void *start, unsigned int len)
+{
+	__skb_postpush_rcsum(skb, start, len, 0);
+}
+
+static inline void __skb_set_length(struct sk_buff *skb, unsigned int len)
+{
+	if (unlikely(skb_is_nonlinear(skb))) {
+		WARN_ON(1);
+		return;
+	}
+	skb->len = len;
+	skb_set_tail_pointer(skb, len);
+}
+
+static inline int __skb_grow(struct sk_buff *skb, unsigned int len)
+{
+	if (skb_is_nonlinear(skb))
+		return -EINVAL;
+	if (skb_tailroom(skb) < len - skb->len)
+		return -ENOMEM;
+	__skb_set_length(skb, len);
+	return 0;
+}
+
+static inline int __skb_trim_rcsum(struct sk_buff *skb, unsigned int len)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->ip_summed = CHECKSUM_NONE;
+	__skb_trim(skb, len);
+	return 0;
+}
+
+static inline int __skb_grow_rcsum(struct sk_buff *skb, unsigned int len)
+{
+	if (skb->ip_summed == CHECKSUM_COMPLETE)
+		skb->ip_summed = CHECKSUM_NONE;
+	return __skb_grow(skb, len);
+}
+
+int skb_ensure_writable(struct sk_buff *skb, int write_len);
+
 
 /**
  *	pskb_trim_rcsum - trim received skb and update checksum

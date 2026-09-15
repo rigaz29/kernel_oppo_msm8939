@@ -70,4 +70,14 @@ static inline u32 task_cls_classid(struct task_struct *p)
 	return 0;
 }
 #endif /* CGROUP_NET_CLS_CGROUP */
+/*
+ * A37: dari upstream. CONFIG_NET_CLS_CGROUP tidak menyala di kernel ini,
+ * sehingga task_cls_classid() mengembalikan 0 dan bpf_get_cgroup_classid()
+ * ikut 0 -- jujur, bukan nilai karangan.
+ */
+static inline u32 task_get_classid(const struct sk_buff *skb)
+{
+	return task_cls_classid(current);
+}
+
 #endif  /* _NET_CLS_CGROUP_H */

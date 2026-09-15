@@ -21,6 +21,7 @@ void sock_diag_register_inet_compat(int (*fn)(struct sk_buff *skb, struct nlmsgh
 void sock_diag_unregister_inet_compat(int (*fn)(struct sk_buff *skb, struct nlmsghdr *nlh));
 
 int sock_diag_check_cookie(void *sk, __u32 *cookie);
+u64 sock_gen_cookie(struct sock *sk);
 void sock_diag_save_cookie(void *sk, __u32 *cookie);
 
 int sock_diag_put_meminfo(struct sock *sk, struct sk_buff *skb, int attr);

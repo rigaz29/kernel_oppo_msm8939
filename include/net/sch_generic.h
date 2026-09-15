@@ -229,10 +229,22 @@ struct tcf_proto {
 struct qdisc_skb_cb {
 	unsigned int		pkt_len;
 	u16			slave_dev_queue_mapping;
-	u16			_pad;
+	/* A37: upstream memakai ulang _pad sebagai tc_classid -- ukuran cb tidak
+	 * berubah. Dipakai bpf_skb_set_cgroup_classid()/cls_bpf. */
+	u16			tc_classid;
 #define QDISC_CB_PRIV_LEN 20
 	unsigned char		data[QDISC_CB_PRIV_LEN];
 };
+
+/* A37: dari upstream. */
+static inline bool skb_at_tc_ingress(const struct sk_buff *skb)
+{
+#ifdef CONFIG_NET_CLS_ACT
+	return G_TC_AT(skb->tc_verd) & AT_INGRESS;
+#else
+	return false;
+#endif
+}
 
 static inline void qdisc_cb_private_validate(const struct sk_buff *skb, int sz)
 {

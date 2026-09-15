@@ -39,6 +39,8 @@ struct netns_ipvs;
 #define NETDEV_HASHENTRIES (1 << NETDEV_HASHBITS)
 
 struct net {
+	/* A37: dari upstream 33cf7c90fe2f, dipakai sock_gen_cookie(). */
+	atomic64_t		cookie_gen;
 	atomic_t		passive;	/* To decided when the network
 						 * namespace should be freed.
 						 */

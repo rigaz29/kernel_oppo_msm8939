@@ -49,10 +49,9 @@
 #include <linux/if_vlan.h>
 #include <linux/bpf.h>
 #include <net/sch_generic.h>
+#include <linux/bpf-cgroup.h>	/* A37: BPF_CGROUP_RUN_PROG_* */
 #include <net/cls_cgroup.h>
-#include <net/dst_metadata.h>
 #include <net/dst.h>
-#include <net/sock_reuseport.h>
 #include <net/bpf_sk_storage.h>
 
 /**
@@ -1224,29 +1223,14 @@ static int __sk_attach_prog(struct bpf_prog *prog, struct sock *sk)
 	return 0;
 }
 
-static int __reuseport_attach_prog(struct bpf_prog *prog, struct sock *sk)
-{
-	struct bpf_prog *old_prog;
-	int err;
-
-	if (bpf_prog_size(prog->len) > sysctl_optmem_max)
-		return -ENOMEM;
-
-	if (sk_unhashed(sk) && sk->sk_reuseport) {
-		err = reuseport_alloc(sk);
-		if (err)
-			return err;
-	} else if (!rcu_access_pointer(sk->sk_reuseport_cb)) {
-		/* The socket wasn't bound with SO_REUSEPORT */
-		return -EINVAL;
-	}
-
-	old_prog = reuseport_attach_prog(sk, prog);
-	if (old_prog)
-		bpf_prog_destroy(old_prog);
-
-	return 0;
-}
+/*
+ * A37: SO_ATTACH_REUSEPORT_CBPF/EBPF tidak ada di kernel ini (sockopt-nya baru
+ * muncul di 4.5, dan struct sock di sini tidak punya sk_reuseport_cb), sehingga
+ * __reuseport_attach_prog(), sk_reuseport_attach_filter(), dan
+ * sk_reuseport_attach_bpf() adalah kode mati yang tak terjangkau. Dibuang
+ * beserta ketergantungannya pada net/sock_reuseport.h, alih-alih mem-backport
+ * seluruh infrastruktur grup reuseport yang tidak dipakai siapa pun di sini.
+ */
 
 static
 struct bpf_prog *__get_filter(struct sock_fprog *fprog, struct sock *sk)
@@ -1313,22 +1297,6 @@ int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk)
 }
 EXPORT_SYMBOL_GPL(sk_attach_filter);
 
-int sk_reuseport_attach_filter(struct sock_fprog *fprog, struct sock *sk)
-{
-	struct bpf_prog *prog = __get_filter(fprog, sk);
-	int err;
-
-	if (IS_ERR(prog))
-		return PTR_ERR(prog);
-
-	err = __reuseport_attach_prog(prog, sk);
-	if (err < 0) {
-		__bpf_prog_release(prog);
-		return err;
-	}
-
-	return 0;
-}
 
 static struct bpf_prog *__get_bpf(u32 ufd, struct sock *sk)
 {
@@ -1355,22 +1323,6 @@ int sk_attach_bpf(u32 ufd, struct sock *sk)
 	return 0;
 }
 
-int sk_reuseport_attach_bpf(u32 ufd, struct sock *sk)
-{
-	struct bpf_prog *prog = __get_bpf(ufd, sk);
-	int err;
-
-	if (IS_ERR(prog))
-		return PTR_ERR(prog);
-
-	err = __reuseport_attach_prog(prog, sk);
-	if (err < 0) {
-		bpf_prog_put(prog);
-		return err;
-	}
-
-	return 0;
-}
 
 struct bpf_scratchpad {
 	union {
@@ -1878,7 +1830,7 @@ BPF_CALL_3(bpf_skb_vlan_push, struct sk_buff *, skb, __be16, vlan_proto,
 		vlan_proto = htons(ETH_P_8021Q);
 
 	bpf_push_mac_rcsum(skb);
-	ret = skb_vlan_push(skb, vlan_proto, vlan_tci);
+	ret = -EOPNOTSUPP;	/* A37: skb_vlan_push() tidak ada di kernel ini */
 	bpf_pull_mac_rcsum(skb);
 
 	bpf_compute_data_end(skb);
@@ -1900,7 +1852,7 @@ BPF_CALL_1(bpf_skb_vlan_pop, struct sk_buff *, skb)
 	int ret;
 
 	bpf_push_mac_rcsum(skb);
-	ret = skb_vlan_pop(skb);
+	ret = -EOPNOTSUPP;	/* A37: skb_vlan_pop() tidak ada di kernel ini */
 	bpf_pull_mac_rcsum(skb);
 
 	bpf_compute_data_end(skb);
@@ -2420,79 +2372,25 @@ static const struct bpf_func_proto bpf_skb_event_output_proto = {
 	.arg5_type	= ARG_CONST_SIZE,
 };
 
-static unsigned short bpf_tunnel_key_af(u64 flags)
-{
-	return 0;
-}
-
-BPF_CALL_4(bpf_skb_get_tunnel_key, struct sk_buff *, skb, struct bpf_tunnel_key *, to,
-	   u32, size, u64, flags)
-{
-	return 0;
-}
-
-static const struct bpf_func_proto bpf_skb_get_tunnel_key_proto = {
-	.func		= bpf_skb_get_tunnel_key,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_PTR_TO_UNINIT_MEM,
-	.arg3_type	= ARG_CONST_SIZE,
-	.arg4_type	= ARG_ANYTHING,
-};
-
-BPF_CALL_3(bpf_skb_get_tunnel_opt, struct sk_buff *, skb, u8 *, to, u32, size)
-{
-	return 0;
-}
-
-static const struct bpf_func_proto bpf_skb_get_tunnel_opt_proto = {
-	.func		= bpf_skb_get_tunnel_opt,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_PTR_TO_UNINIT_MEM,
-	.arg3_type	= ARG_CONST_SIZE,
-};
-
-static struct metadata_dst __percpu *md_dst;
-
-BPF_CALL_4(bpf_skb_set_tunnel_key, struct sk_buff *, skb,
-	   const struct bpf_tunnel_key *, from, u32, size, u64, flags)
-{
-	return 0;
-}
-
-static const struct bpf_func_proto bpf_skb_set_tunnel_key_proto = {
-	.func		= bpf_skb_set_tunnel_key,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_PTR_TO_MEM,
-	.arg3_type	= ARG_CONST_SIZE,
-	.arg4_type	= ARG_ANYTHING,
-};
-
-BPF_CALL_3(bpf_skb_set_tunnel_opt, struct sk_buff *, skb,
-	   const u8 *, from, u32, size)
-{
-	return 0;
-}
-
-static const struct bpf_func_proto bpf_skb_set_tunnel_opt_proto = {
-	.func		= bpf_skb_set_tunnel_opt,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_PTR_TO_MEM,
-	.arg3_type	= ARG_CONST_SIZE,
-};
-
-static const struct bpf_func_proto *
-bpf_get_skb_set_tunnel_proto(enum bpf_func_id which)
-{
-	return 0;
-}
+/*
+ * A37: seluruh helper tunnel metadata DIBUANG, 15 Sep 2026.
+ *
+ * Sumber backport (a6010) menyisakannya sebagai stub yang setiap badannya
+ * hanya `return 0;`. Itu BUG: bpf_skb_get_tunnel_key() dideklarasikan dengan
+ * arg2_type = ARG_PTR_TO_UNINIT_MEM, artinya verifier menganggap helper WAJIB
+ * mengisi buffer keluarannya. Mengembalikan 0 (sukses) tanpa menulis apa pun
+ * membuat program BPF membaca sampah stack dan memperlakukannya sebagai kunci
+ * tunnel yang sah. Upstream, saat tidak ada info tunnel, melakukan
+ * `memset(to, 0, size)` LALU mengembalikan galat (filter.c:2802-2804 di v4.14).
+ *
+ * Kernel ini memang tidak punya infrastruktur metadata_dst/lwtunnel sama
+ * sekali, jadi yang benar bukan memperbaiki stub melainkan TIDAK menawarkan
+ * helper-nya: keempat case di bawah mengembalikan NULL sehingga verifier
+ * MENOLAK program yang memakainya saat dimuat. Gagal terang-terangan, bukan
+ * berjalan dengan nilai karangan.
+ *
+ * Tidak satu pun program BPF Android 13 memakai helper ini.
+ */
 
 BPF_CALL_3(bpf_skb_under_cgroup, struct sk_buff *, skb, struct bpf_map *, map,
 	   u32, idx)
@@ -2511,7 +2409,13 @@ BPF_CALL_3(bpf_skb_under_cgroup, struct sk_buff *, skb, struct bpf_map *, map,
 	if (unlikely(!cgrp))
 		return -EAGAIN;
 
-	return sk_under_cgroup_hierarchy(sk, cgrp);
+	/*
+	 * A37: sk_under_cgroup_hierarchy() upstream memakai sk->sk_cgrp_data
+	 * yang baru ada di 4.5. Lagipula helper ini butuh BPF_MAP_TYPE_CGROUP_ARRAY
+	 * yang sudah dimatikan (CONFIG_BPF_FD_ARRAY_MAPS), jadi jalur ini tak
+	 * terjangkau. func_proto-nya dikembalikan NULL di bawah.
+	 */
+	return -EOPNOTSUPP;
 }
 
 static const struct bpf_func_proto bpf_skb_under_cgroup_proto = {
@@ -2660,9 +2564,9 @@ tc_cls_act_func_proto(enum bpf_func_id func_id)
 	case BPF_FUNC_get_cgroup_classid:
 		return &bpf_get_cgroup_classid_proto;
 	case BPF_FUNC_skb_vlan_push:
-		return &bpf_skb_vlan_push_proto;
+		return NULL;	/* A37: VLAN tidak didukung */
 	case BPF_FUNC_skb_vlan_pop:
-		return &bpf_skb_vlan_pop_proto;
+		return NULL;	/* A37: VLAN tidak didukung */
 	case BPF_FUNC_skb_change_proto:
 		return &bpf_skb_change_proto_proto;
 	case BPF_FUNC_skb_change_type:
@@ -2674,13 +2578,11 @@ tc_cls_act_func_proto(enum bpf_func_id func_id)
 	case BPF_FUNC_skb_change_head:
 		return &bpf_skb_change_head_proto;
 	case BPF_FUNC_skb_get_tunnel_key:
-		return &bpf_skb_get_tunnel_key_proto;
 	case BPF_FUNC_skb_set_tunnel_key:
-		return bpf_get_skb_set_tunnel_proto(func_id);
 	case BPF_FUNC_skb_get_tunnel_opt:
-		return &bpf_skb_get_tunnel_opt_proto;
 	case BPF_FUNC_skb_set_tunnel_opt:
-		return bpf_get_skb_set_tunnel_proto(func_id);
+		/* A37: tidak didukung -- lihat catatan di atas. */
+		return NULL;
 	case BPF_FUNC_redirect:
 		return &bpf_redirect_proto;
 	case BPF_FUNC_get_route_realm:
@@ -2694,9 +2596,13 @@ tc_cls_act_func_proto(enum bpf_func_id func_id)
 	case BPF_FUNC_get_smp_processor_id:
 		return &bpf_get_smp_processor_id_proto;
 	case BPF_FUNC_skb_under_cgroup:
-		return &bpf_skb_under_cgroup_proto;
+		return NULL;	/* A37: butuh CGROUP_ARRAY yang dimatikan */
 	case BPF_FUNC_tcp_sock:
+#ifdef CONFIG_BPF_TCP_SOCK
 		return &bpf_tcp_sock_proto;
+#else
+		return NULL;	/* A37: tidak didukung, lihat catatan di filter.c */
+#endif
 	case BPF_FUNC_sk_storage_get:
 		return &bpf_sk_storage_get_proto;
 	case BPF_FUNC_sk_storage_delete:
@@ -2722,38 +2628,17 @@ xdp_func_proto(enum bpf_func_id func_id)
 const struct ipv6_bpf_stub *ipv6_bpf_stub __read_mostly;
 EXPORT_SYMBOL_GPL(ipv6_bpf_stub);
 
+/*
+ * A37: helper bpf_bind() DIBUANG. Ia menuntut __inet_bind() (pemisahan
+ * inet_bind yang baru ada di 4.17) dan ipv6_bpf_stub. Hook BPF_CGROUP_INET*_BIND
+ * tidak dipakai program BPF Android 13 -- block.c memang punya bind4/block_port,
+ * tetapi KVER-nya 5.8 sehingga dilewati loader di kernel ini.
+ * func_proto-nya dikembalikan NULL agar verifier menolak pemakainya.
+ */
 BPF_CALL_3(bpf_bind, struct bpf_sock_addr_kern *, ctx, struct sockaddr *, addr,
 	   int, addr_len)
 {
-#ifdef CONFIG_INET
-	struct sock *sk = ctx->sk;
-	int err;
-
-	/* Binding to port can be expensive so it's prohibited in the helper.
-	 * Only binding to IP is supported.
-	 */
-	err = -EINVAL;
-	if (addr->sa_family == AF_INET) {
-		if (addr_len < sizeof(struct sockaddr_in))
-			return err;
-		if (((struct sockaddr_in *)addr)->sin_port != htons(0))
-			return err;
-		return __inet_bind(sk, addr, addr_len, true, false);
-#if IS_ENABLED(CONFIG_IPV6)
-	} else if (addr->sa_family == AF_INET6) {
-		if (addr_len < SIN6_LEN_RFC2133)
-			return err;
-		if (((struct sockaddr_in6 *)addr)->sin6_port != htons(0))
-			return err;
-		/* ipv6_bpf_stub cannot be NULL, since it's called from
-		 * bpf_cgroup_inet6_connect hook and ipv6 is already loaded
-		 */
-		return ipv6_bpf_stub->inet6_bind(sk, addr, addr_len, true, false);
-#endif /* CONFIG_IPV6 */
-	}
-#endif /* CONFIG_INET */
-
-	return -EAFNOSUPPORT;
+	return -EOPNOTSUPP;
 }
 
 static const struct bpf_func_proto bpf_bind_proto = {
@@ -2775,7 +2660,7 @@ sock_addr_func_proto(enum bpf_func_id func_id)
         case BPF_FUNC_get_current_uid_gid:
                 return &bpf_get_current_uid_gid_proto;
         case BPF_FUNC_bind:
-                return &bpf_bind_proto;
+                return NULL;	/* A37: bpf_bind tidak didukung */
         default:
                 return sk_filter_func_proto(func_id);
         }
@@ -2792,7 +2677,11 @@ cg_skb_func_proto(enum bpf_func_id func_id)
 		return &bpf_skb_load_bytes_proto;
 #ifdef CONFIG_INET
 	case BPF_FUNC_tcp_sock:
+#ifdef CONFIG_BPF_TCP_SOCK
 		return &bpf_tcp_sock_proto;
+#else
+		return NULL;	/* A37: tidak didukung, lihat catatan di filter.c */
+#endif
 #endif
 	case BPF_FUNC_sk_storage_get:
 		return &bpf_sk_storage_get_proto;
@@ -3360,6 +3249,16 @@ static u32 sock_addr_convert_ctx_access(enum bpf_access_type type,
 	return insn - insn_buf;
 }
 
+/*
+ * A37: bpf_tcp_sock() dimatikan -- lihat CONFIG_BPF_TCP_SOCK di init/Kconfig.
+ *
+ * Selain struct tcp_sock 3.10 yang tidak punya field yang dibutuhkan, ada
+ * alasan kedua: bpf_tcp_sock_is_valid_access() versi a6010 berbunyi
+ * `return true;` TANPA SYARAT -- tidak memeriksa off, size, maupun type,
+ * sehingga pemeriksaan akses konteks oleh verifier lumpuh. Upstream memeriksa
+ * ketiganya dengan cermat.
+ */
+#ifdef CONFIG_BPF_TCP_SOCK
 bool bpf_tcp_sock_is_valid_access(int off, int size, enum bpf_access_type type,
 				  enum bpf_reg_type *reg_type)
 {
@@ -3474,6 +3373,7 @@ const struct bpf_func_proto bpf_tcp_sock_proto = {
 	.ret_type	= RET_PTR_TO_TCP_SOCK_OR_NULL,
 	.arg1_type	= ARG_ANYTHING,
 };
+#endif /* CONFIG_BPF_TCP_SOCK */
 
 static const struct bpf_func_proto *
 cg_sockopt_func_proto(enum bpf_func_id func_id)
@@ -3485,7 +3385,11 @@ cg_sockopt_func_proto(enum bpf_func_id func_id)
 		return &bpf_sk_storage_delete_proto;
 #ifdef CONFIG_INET
 	case BPF_FUNC_tcp_sock:
+#ifdef CONFIG_BPF_TCP_SOCK
 		return &bpf_tcp_sock_proto;
+#else
+		return NULL;	/* A37: tidak didukung, lihat catatan di filter.c */
+#endif
 #endif
 	default:
 		return sk_filter_func_proto(func_id);
