@@ -224,4 +224,41 @@ static inline void static_key_disable(struct static_key *key)
 		static_key_slow_dec(key);
 }
 
+/*
+ * A37: shim API jump label 4.3+ di atas API static_key 3.10.
+ *
+ * Upstream ef95314459fb memperkenalkan struct static_key_true/false yang
+ * bertipe berbeda, supaya kompilator bisa menolak pemakaian kunci "true" pada
+ * static_branch_unlikely() dan sebaliknya. Di sini keduanya hanya membungkus
+ * struct static_key yang sudah ada -- pemeriksaan tipe upstream tidak ditiru,
+ * tetapi PERILAKUNYA sama, dan itu yang dibutuhkan kernel/bpf/cgroup.c.
+ */
+struct static_key_false {
+	struct static_key key;
+};
+
+struct static_key_true {
+	struct static_key key;
+};
+
+#define STATIC_KEY_FALSE_INIT	{ .key = STATIC_KEY_INIT_FALSE }
+#define STATIC_KEY_TRUE_INIT	{ .key = STATIC_KEY_INIT_TRUE }
+
+#define DEFINE_STATIC_KEY_FALSE(name)					\
+	struct static_key_false name = STATIC_KEY_FALSE_INIT
+
+#define DEFINE_STATIC_KEY_TRUE(name)					\
+	struct static_key_true name = STATIC_KEY_TRUE_INIT
+
+#define DECLARE_STATIC_KEY_FALSE(name)					\
+	extern struct static_key_false name
+
+#define static_branch_unlikely(x)	unlikely(static_key_false(&(x)->key))
+#define static_branch_likely(x)		likely(static_key_true(&(x)->key))
+
+#define static_branch_inc(x)		static_key_slow_inc(&(x)->key)
+#define static_branch_dec(x)		static_key_slow_dec(&(x)->key)
+#define static_branch_enable(x)		static_key_slow_inc(&(x)->key)
+#define static_branch_disable(x)	static_key_slow_dec(&(x)->key)
+
 #endif	/* _LINUX_JUMP_LABEL_H */

@@ -146,9 +146,11 @@ CONFIG_NETFILTER_XT_MATCH_BPF=y
 # bpf_tcp_sock(): struct tcp_sock 3.10 tidak punya field yang dibutuhkan.
 # CONFIG_BPF_TCP_SOCK is not set
 
-# Pemasangan program ke cgroup: mesinnya belum disambungkan ke cgroup
-# subsystem kernel ini. WAJIB menyala sebelum program netd bisa dimuat.
-# CONFIG_CGROUP_BPF is not set
+# Pemasangan program BPF ke cgroup. Dibutuhkan program cgroupskb/ingress/stats
+# dan egress/stats milik netd -- satu-satunya yang mengisi app_uid_stats_map,
+# yaitu atribusi data per APLIKASI. Jalur xt_bpf hanya per-antarmuka.
+CONFIG_CGROUP_BPF=y
+CONFIG_SOCK_CGROUP_DATA=y
 CONFIG_ARCH_MMAP_RND_COMPAT_BITS=16
 CONFIG_PARTITION_ADVANCED=y
 # CONFIG_IOSCHED_TEST is not set
