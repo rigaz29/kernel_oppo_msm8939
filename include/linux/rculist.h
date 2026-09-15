@@ -10,6 +10,17 @@
 #include <linux/rcupdate.h>
 
 /*
+ * A37: dari upstream 1d023284c31c. Menginisialisasi list head yang sedang
+ * dibaca pembaca RCU; penulisan harus tunggal agar pembaca tidak pernah
+ * melihat nilai setengah jadi.
+ */
+static inline void INIT_LIST_HEAD_RCU(struct list_head *list)
+{
+	ACCESS_ONCE(list->next) = list;
+	ACCESS_ONCE(list->prev) = list;
+}
+
+/*
  * Why is there no list_empty_rcu()?  Because list_empty() serves this
  * purpose.  The list_empty() function fetches the RCU-protected pointer
  * and compares it to the address of the list head, but neither dereferences

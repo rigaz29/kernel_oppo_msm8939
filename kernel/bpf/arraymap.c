@@ -463,6 +463,12 @@ static int __init register_prog_array_map(void)
 }
 late_initcall(register_prog_array_map);
 
+/*
+ * A37: PERF_EVENT_ARRAY dan CGROUP_ARRAY dimatikan di kernel ini -- lihat
+ * CONFIG_BPF_FD_ARRAY_MAPS di init/Kconfig. Tanpa simbol itu keduanya TIDAK
+ * didaftarkan, sehingga bpf(BPF_MAP_CREATE) mengembalikan -EINVAL dengan jujur.
+ */
+#ifdef CONFIG_BPF_FD_ARRAY_MAPS
 static struct bpf_event_entry *bpf_event_entry_gen(struct file *perf_file,
 						   struct file *map_file)
 {
@@ -603,7 +609,8 @@ static int __init register_cgroup_array_map(void)
 	return 0;
 }
 late_initcall(register_cgroup_array_map);
-#endif
+#endif /* CONFIG_CGROUPS */
+#endif /* CONFIG_BPF_FD_ARRAY_MAPS */
 
 static struct bpf_map *array_of_map_alloc(union bpf_attr *attr)
 {

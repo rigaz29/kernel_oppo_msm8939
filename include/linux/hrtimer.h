@@ -316,6 +316,34 @@ static inline void timerfd_clock_was_set(void) { }
 extern void hrtimers_resume(void);
 
 extern ktime_t ktime_get(void);
+
+/*
+ * A37: padanan ktime_get_mono_fast_ns()/ktime_get_boot_fast_ns() upstream
+ * (4396e058c52e dan 7b1f6207dc8d) untuk kernel ini.
+ *
+ * PERBEDAAN YANG HARUS DIKETAHUI: versi upstream aman dipanggil dari konteks
+ * NMI karena memakai timekeeper bayangan. Di 3.10 mekanisme itu tidak ada,
+ * sehingga versi di bawah memakai pembacaan biasa yang dilindungi seqlock --
+ * BUKAN NMI-safe.
+ *
+ * Itu benar untuk pemakaian di sini: satu-satunya pemanggil adalah helper
+ * bpf_ktime_get_ns()/bpf_ktime_get_boot_ns(), dan program BPF di perangkat ini
+ * hanya tipe jaringan (cgroup_skb, socket_filter) yang tidak pernah berjalan
+ * dari NMI. JANGAN pakai ini bila suatu saat program BPF dipasang ke perf
+ * event atau kprobe.
+ */
+static inline u64 ktime_get_mono_fast_ns(void)
+{
+	return ktime_to_ns(ktime_get());
+}
+
+static inline u64 ktime_get_boot_fast_ns(void)
+{
+	struct timespec ts;
+
+	get_monotonic_boottime(&ts);
+	return (u64)timespec_to_ns(&ts);
+}
 extern ktime_t ktime_get_real(void);
 extern ktime_t ktime_get_boottime(void);
 extern ktime_t ktime_get_monotonic_offset(void);

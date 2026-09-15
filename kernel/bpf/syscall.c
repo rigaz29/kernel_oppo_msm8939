@@ -39,7 +39,6 @@ static LIST_HEAD(bpf_map_types);
 
 static struct bpf_map *find_and_alloc_map(union bpf_attr *attr)
 {
-	const struct bpf_map_ops *ops;
 	struct bpf_map_type_list *tl;
 	struct bpf_map *map;
 	int err;
@@ -1497,7 +1496,16 @@ static int bpf_prog_get_info_by_fd(struct bpf_prog *prog,
 	}
 
 	ulen = info.jited_prog_len;
-	info.jited_prog_len = bpf_prog_size(prog->len) / 2;
+	/*
+	 * A37: HACK a6010 DIBUANG. Mereka menulis
+	 *     info.jited_prog_len = bpf_prog_size(prog->len) / 2;
+	 * -- angka KARANGAN, separuh ukuran program, tanpa makna -- supaya
+	 * NetBpfLoad Android 15 mengira program sudah di-JIT padahal
+	 * ditafsirkan. bpfloader Android 13 tidak memeriksa jited sama sekali
+	 * (diperiksa di system/bpf/), jadi kebohongan itu tidak dibutuhkan di
+	 * sini. Dilaporkan apa adanya: 0 selama belum ada JIT arm64.
+	 */
+	info.jited_prog_len = 0;	/* tidak ada JIT eBPF arm64 di kernel ini */
 	if (info.jited_prog_len && ulen) {
 		uinsns = u64_to_user_ptr(info.jited_prog_insns);
 		ulen = min_t(u32, info.jited_prog_len, ulen);
@@ -1541,12 +1549,20 @@ static int bpf_map_get_info_by_fd(struct bpf_map *map,
 	info.key_size = map->key_size;
 	info.value_size = map->value_size;
 	info.max_entries = map->max_entries;
-	if (map->map_type == BPF_MAP_TYPE_DEVMAP_HASH)
-		info.map_flags = 128;
-	else if (map->map_type == BPF_MAP_TYPE_LPM_TRIE)
-		info.map_flags = 1;
-	else
-		info.map_flags = map->map_flags;
+	/*
+	 * A37: HACK a6010 DIBUANG. Mereka memaksa map_flags jadi 128
+	 * (BPF_F_RDONLY_PROG) untuk DEVMAP_HASH dan 1 (BPF_F_NO_PREALLOC) untuk
+	 * LPM_TRIE, menimpa nilai sesungguhnya, agar lolos mapMatchesExpectations
+	 * NetBpfLoad. Tidak dibutuhkan di sini dan menyesatkan:
+	 *   - map_flags memang sudah disimpan benar saat pembuatan peta
+	 *     (mis. arraymap.c:131 array->map.map_flags = attr->map_flags);
+	 *   - peta netd Android 13 memakai map_flags 0, sehingga cocok apa adanya;
+	 *   - Loader.cpp A13 hanya menambahkan BPF_F_RDONLY_PROG untuk DEVMAP,
+	 *     dan DEVMAP tidak dibangun di kernel ini.
+	 * Melaporkan nilai palsu justru akan membuat peta DITOLAK bila suatu saat
+	 * userspace meminta flag yang berbeda.
+	 */
+	info.map_flags = map->map_flags;
 
 	memcpy(info.name, map->name, sizeof(map->name));
 

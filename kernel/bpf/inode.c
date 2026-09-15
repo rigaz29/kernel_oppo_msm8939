@@ -204,7 +204,8 @@ static const struct inode_operations bpf_dir_iops = {
 	.mknod		= bpf_mkobj,
 	.mkdir		= bpf_mkdir,
 	.rmdir		= simple_rmdir,
-	.rename2	= simple_rename,
+	/* A37: 3.10 belum punya inode_operations::rename2 (baru di 3.15). */
+	.rename		= simple_rename,
 	.link		= simple_link,
 	.unlink		= simple_unlink,
 };

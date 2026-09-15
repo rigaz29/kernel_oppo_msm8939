@@ -1400,6 +1400,17 @@ static inline void security_free_mnt_opts(struct security_mnt_opts *opts)
  *	@ctxlen points to the place to put the length of @ctx.
  * This is the main security structure.
  */
+/*
+ * A37: hook LSM untuk objek BPF, mengikuti upstream afdb09c720b6
+ * ("security: bpf: Add LSM hooks for bpf object related syscall").
+ * Dipakai deklarasi maju, BUKAN #include <linux/bpf.h>, karena bpf.h sendiri
+ * menarik masuk berkas yang menyertakan security.h -- include melingkar.
+ */
+struct bpf_map;
+struct bpf_prog;
+struct bpf_prog_aux;
+union bpf_attr;
+
 struct security_operations {
 	char name[SECURITY_NAME_MAX + 1];
 
@@ -1690,6 +1701,16 @@ struct security_operations {
 				 struct audit_context *actx);
 	void (*audit_rule_free) (void *lsmrule);
 #endif /* CONFIG_AUDIT */
+
+#ifdef CONFIG_BPF_SYSCALL
+	int (*bpf)(int cmd, union bpf_attr *attr, unsigned int size);
+	int (*bpf_map)(struct bpf_map *map, fmode_t fmode);
+	int (*bpf_prog)(struct bpf_prog *prog);
+	int (*bpf_map_alloc_security)(struct bpf_map *map);
+	void (*bpf_map_free_security)(struct bpf_map *map);
+	int (*bpf_prog_alloc_security)(struct bpf_prog_aux *aux);
+	void (*bpf_prog_free_security)(struct bpf_prog_aux *aux);
+#endif /* CONFIG_BPF_SYSCALL */
 };
 
 /* prototypes */
@@ -1700,6 +1721,16 @@ extern void __init security_fixup_ops(struct security_operations *ops);
 
 
 /* Security operations */
+#ifdef CONFIG_BPF_SYSCALL
+int security_bpf(int cmd, union bpf_attr *attr, unsigned int size);
+int security_bpf_map(struct bpf_map *map, fmode_t fmode);
+int security_bpf_prog(struct bpf_prog *prog);
+int security_bpf_map_alloc(struct bpf_map *map);
+void security_bpf_map_free(struct bpf_map *map);
+int security_bpf_prog_alloc(struct bpf_prog_aux *aux);
+void security_bpf_prog_free(struct bpf_prog_aux *aux);
+#endif /* CONFIG_BPF_SYSCALL */
+
 int security_binder_set_context_mgr(struct task_struct *mgr);
 int security_binder_transaction(struct task_struct *from, struct task_struct *to);
 int security_binder_transfer_binder(struct task_struct *from, struct task_struct *to);
@@ -1887,6 +1918,44 @@ static inline int security_init(void)
 {
 	return 0;
 }
+
+#ifdef CONFIG_BPF_SYSCALL
+/*
+ * A37: a6010 TIDAK menyediakan blok ini, sehingga pohon mereka gagal dibangun
+ * bila CONFIG_SECURITY=n sementara CONFIG_BPF_SYSCALL=y. Ditambahkan sesuai
+ * upstream.
+ */
+static inline int security_bpf(int cmd, union bpf_attr *attr, unsigned int size)
+{
+	return 0;
+}
+
+static inline int security_bpf_map(struct bpf_map *map, fmode_t fmode)
+{
+	return 0;
+}
+
+static inline int security_bpf_prog(struct bpf_prog *prog)
+{
+	return 0;
+}
+
+static inline int security_bpf_map_alloc(struct bpf_map *map)
+{
+	return 0;
+}
+
+static inline void security_bpf_map_free(struct bpf_map *map)
+{ }
+
+static inline int security_bpf_prog_alloc(struct bpf_prog_aux *aux)
+{
+	return 0;
+}
+
+static inline void security_bpf_prog_free(struct bpf_prog_aux *aux)
+{ }
+#endif /* CONFIG_BPF_SYSCALL */
 
 static inline int security_binder_set_context_mgr(struct task_struct *mgr)
 {

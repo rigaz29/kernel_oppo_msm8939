@@ -34,6 +34,15 @@ void prandom_reseed_late(void);
 
 u32 prandom_u32_state(struct rnd_state *);
 void prandom_bytes_state(struct rnd_state *state, void *buf, int nbytes);
+void prandom_seed_full_state(struct rnd_state __percpu *pcpu_state);
+
+/*
+ * A37: padanan prandom_init_once() upstream. Upstream memakai DO_ONCE() yang
+ * belum ada di 3.10. Penjaganya diletakkan di lib/random32.c, BUKAN sebagai
+ * makro di sini: makro itu butuh DEFINE_SPINLOCK sehingga random.h harus
+ * menyertakan spinlock.h, dan itu memicu include melingkar.
+ */
+void prandom_init_once(struct rnd_state __percpu *pcpu_state);
 
 /*
  * Handle minimum values for seeds

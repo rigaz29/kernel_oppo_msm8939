@@ -1260,6 +1260,24 @@ config SYSCTL
 config BPF
 	bool
 
+config BPF_FD_ARRAY_MAPS
+	bool "BPF maps that store file descriptors"
+	depends on BPF_SYSCALL
+	default n
+	help
+	  Tipe peta BPF yang menyimpan file descriptor ke objek kernel lain:
+	  PERF_EVENT_ARRAY, CGROUP_ARRAY, dan STACK_TRACE.
+
+	  MATI di kernel 3.10 ini. Ketiganya menuntut API yang baru ada di 4.6:
+	  perf_event_get(), perf_event_read_local(), get_perf_callchain(),
+	  sysctl_perf_event_max_stack, cgroup_get_from_fd(), dan cgroup_put().
+	  Mem-backport-nya berarti menyentuh inti perf dan cgroup, dan tidak satu
+	  pun program BPF Android 13 membutuhkannya -- netd hanya memakai HASH
+	  dan ARRAY.
+
+	  Dengan MATI, bpf(BPF_MAP_CREATE) untuk ketiga tipe itu mengembalikan
+	  -EINVAL dengan jujur, bukan berpura-pura didukung.
+
 config BPF_SYSCALL
 	bool "Enable bpf() system call"
 	select ANON_INODES

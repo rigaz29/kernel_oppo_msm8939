@@ -254,6 +254,15 @@ extern void d_genocide(struct dentry *);
 extern void d_tmpfile(struct dentry *, struct inode *);
 
 extern struct dentry *d_find_alias(struct inode *);
+
+/*
+ * A37: dari upstream dea655957e2f. Di kernel ini selalu d_inode; disediakan
+ * agar kode yang di-backport (kernel/bpf/inode.c) tidak perlu diubah.
+ */
+static inline struct inode *d_backing_inode(const struct dentry *upper)
+{
+	return upper->d_inode;
+}
 extern void d_prune_aliases(struct inode *);
 
 /* test whether we have any submounts in a subdir tree */
