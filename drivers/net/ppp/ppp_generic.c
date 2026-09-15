@@ -143,9 +143,13 @@ struct ppp {
 	struct sk_buff_head mrq;	/* MP: receive reconstruction queue */
 #endif /* CONFIG_PPP_MULTILINK */
 #ifdef CONFIG_PPP_FILTER
-	struct sock_filter *pass_filter;	/* filter for packets to pass */
-	struct sock_filter *active_filter;/* filter for pkts to reset idle */
-	unsigned pass_len, active_len;
+	/*
+	 * A37: dari sock_filter mentah menjadi bpf_prog, mengikuti upstream
+	 * 568f194e8bd1. pass_len/active_len tidak lagi diperlukan -- panjangnya
+	 * ada di prog->len.
+	 */
+	struct bpf_prog *pass_filter;	/* filter for packets to pass */
+	struct bpf_prog *active_filter;	/* filter for pkts to reset idle */
 #endif /* CONFIG_PPP_FILTER */
 	struct net	*ppp_net;	/* the net we belong to */
 	struct ppp_link_stats stats64;	/* 64 bit network stats */
@@ -540,7 +544,7 @@ static int get_filter(void __user *arg, struct sock_filter **p)
 {
 	struct sock_fprog uprog;
 	struct sock_filter *code = NULL;
-	int len, err;
+	int len;
 
 	if (copy_from_user(&uprog, arg, sizeof(uprog)))
 		return -EFAULT;
@@ -555,12 +559,10 @@ static int get_filter(void __user *arg, struct sock_filter **p)
 	if (IS_ERR(code))
 		return PTR_ERR(code);
 
-	err = sk_chk_filter(code, uprog.len);
-	if (err) {
-		kfree(code);
-		return err;
-	}
-
+	/*
+	 * A37: sk_chk_filter() dibuang dari sini -- bpf_prog_create() di
+	 * pemanggil sudah menjalankan bpf_check_classic() sebelum mengonversi.
+	 */
 	*p = code;
 	return uprog.len;
 }
@@ -753,28 +755,52 @@ static long ppp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case PPPIOCSPASS:
 	{
 		struct sock_filter *code;
+
 		err = get_filter(argp, &code);
 		if (err >= 0) {
-			ppp_lock(ppp);
-			kfree(ppp->pass_filter);
-			ppp->pass_filter = code;
-			ppp->pass_len = err;
-			ppp_unlock(ppp);
+			struct bpf_prog *filter = NULL;
+			struct sock_fprog_kern fprog = {
+				.len = err,
+				.filter = code,
+			};
+
 			err = 0;
+			if (fprog.filter)
+				err = bpf_prog_create(&filter, &fprog);
+			if (!err) {
+				ppp_lock(ppp);
+				if (ppp->pass_filter)
+					bpf_prog_destroy(ppp->pass_filter);
+				ppp->pass_filter = filter;
+				ppp_unlock(ppp);
+			}
+			kfree(code);
 		}
 		break;
 	}
 	case PPPIOCSACTIVE:
 	{
 		struct sock_filter *code;
+
 		err = get_filter(argp, &code);
 		if (err >= 0) {
-			ppp_lock(ppp);
-			kfree(ppp->active_filter);
-			ppp->active_filter = code;
-			ppp->active_len = err;
-			ppp_unlock(ppp);
+			struct bpf_prog *filter = NULL;
+			struct sock_fprog_kern fprog = {
+				.len = err,
+				.filter = code,
+			};
+
 			err = 0;
+			if (fprog.filter)
+				err = bpf_prog_create(&filter, &fprog);
+			if (!err) {
+				ppp_lock(ppp);
+				if (ppp->active_filter)
+					bpf_prog_destroy(ppp->active_filter);
+				ppp->active_filter = filter;
+				ppp_unlock(ppp);
+			}
+			kfree(code);
 		}
 		break;
 	}
@@ -1182,7 +1208,7 @@ ppp_send_frame(struct ppp *ppp, struct sk_buff *skb)
 		   a four-byte PPP header on each packet */
 		*skb_push(skb, 2) = 1;
 		if (ppp->pass_filter &&
-		    sk_run_filter(skb, ppp->pass_filter) == 0) {
+		    BPF_PROG_RUN(ppp->pass_filter, skb) == 0) {
 			if (ppp->debug & 1)
 				netdev_printk(KERN_DEBUG, ppp->dev,
 					      "PPP: outbound frame "
@@ -1192,7 +1218,7 @@ ppp_send_frame(struct ppp *ppp, struct sk_buff *skb)
 		}
 		/* if this packet passes the active filter, record the time */
 		if (!(ppp->active_filter &&
-		      sk_run_filter(skb, ppp->active_filter) == 0))
+		      BPF_PROG_RUN(ppp->active_filter, skb) == 0))
 			ppp->last_xmit = jiffies;
 		skb_pull(skb, 2);
 #else
@@ -1816,7 +1842,7 @@ ppp_receive_nonmp_frame(struct ppp *ppp, struct sk_buff *skb)
 
 			*skb_push(skb, 2) = 0;
 			if (ppp->pass_filter &&
-			    sk_run_filter(skb, ppp->pass_filter) == 0) {
+			    BPF_PROG_RUN(ppp->pass_filter, skb) == 0) {
 				if (ppp->debug & 1)
 					netdev_printk(KERN_DEBUG, ppp->dev,
 						      "PPP: inbound frame "
@@ -1825,7 +1851,7 @@ ppp_receive_nonmp_frame(struct ppp *ppp, struct sk_buff *skb)
 				return;
 			}
 			if (!(ppp->active_filter &&
-			      sk_run_filter(skb, ppp->active_filter) == 0))
+			      BPF_PROG_RUN(ppp->active_filter, skb) == 0))
 				ppp->last_recv = jiffies;
 			__skb_pull(skb, 2);
 		} else
@@ -2800,9 +2826,15 @@ static void ppp_destroy_interface(struct ppp *ppp)
 	skb_queue_purge(&ppp->mrq);
 #endif /* CONFIG_PPP_MULTILINK */
 #ifdef CONFIG_PPP_FILTER
-	kfree(ppp->pass_filter);
+	if (ppp->pass_filter) {
+		bpf_prog_destroy(ppp->pass_filter);
+		ppp->pass_filter = NULL;
+	}
 	ppp->pass_filter = NULL;
-	kfree(ppp->active_filter);
+	if (ppp->active_filter) {
+		bpf_prog_destroy(ppp->active_filter);
+		ppp->active_filter = NULL;
+	}
 	ppp->active_filter = NULL;
 #endif /* CONFIG_PPP_FILTER */
 

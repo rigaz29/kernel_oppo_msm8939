@@ -836,6 +836,30 @@ fail_unlock_mutex:
  * RETURNS:
  * Percpu pointer to the allocated area on success, NULL on failure.
  */
+/**
+ * __alloc_percpu_gfp - allocate dynamic percpu area
+ * @size: size of area to allocate in bytes
+ * @align: alignment of area (max PAGE_SIZE)
+ * @gfp: allocation flags
+ *
+ * A37: padanan upstream 5835d96e9ce4 untuk kernel ini. Upstream mengubah
+ * pcpu_alloc() agar menerima gfp; di 3.10 ia belum bisa, dan SELALU boleh
+ * tidur.
+ *
+ * Karena itu permintaan atomik (tanpa __GFP_WAIT) DITOLAK dengan NULL alih-alih
+ * dilayani -- melayaninya berarti berpotensi tidur di konteks atomik, yang
+ * jauh lebih buruk daripada kegagalan alokasi yang sudah diantisipasi pemanggil.
+ * Pemanggil di kernel/bpf memakai GFP_USER sehingga tidak terpengaruh.
+ */
+void __percpu *__alloc_percpu_gfp(size_t size, size_t align, gfp_t gfp)
+{
+	if (!(gfp & __GFP_WAIT))
+		return NULL;
+
+	return pcpu_alloc(size, align, false);
+}
+EXPORT_SYMBOL_GPL(__alloc_percpu_gfp);
+
 void __percpu *__alloc_percpu(size_t size, size_t align)
 {
 	return pcpu_alloc(size, align, false);
