@@ -707,9 +707,20 @@ __SYSCALL(__NR_seccomp, sys_seccomp)
 __SYSCALL(__NR_getrandom, sys_getrandom)
 #define __NR_memfd_create 279
 __SYSCALL(__NR_memfd_create, sys_memfd_create)
+/*
+ * A37: nomor 280 untuk bpf() adalah nomor UPSTREAM, dan itulah yang dipakai
+ * bionic Android (bionic/libc/kernel/uapi/asm-generic/unistd.h:346).
+ *
+ * ⚠️ JANGAN menyalin tabel a6010: di sana 280 diberikan ke userfaultfd dan
+ * __NR_bpf tidak ada sama sekali di asm-generic (kernel mereka 32-bit, dan arm
+ * punya tabel sendiri). Menyalinnya akan membuat panggilan bpf() dari Android
+ * mendarat di userfaultfd.
+ */
+#define __NR_bpf 280
+__SYSCALL(__NR_bpf, sys_bpf)
 
 #undef __NR_syscalls
-#define __NR_syscalls 280
+#define __NR_syscalls 281
 
 /*
  * All syscalls below here should go away really,
