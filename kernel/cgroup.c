@@ -1436,6 +1436,37 @@ static void init_cgroup_root(struct cgroupfs_root *root)
 	cgrp->name = &root_cgroup_name;
 	init_cgroup_housekeeping(cgrp);
 	list_add_tail(&cgrp->allcg_node, &root->allcg_list);
+
+#ifdef CONFIG_CGROUP_BPF
+	/*
+	 * A37, PERBAIKAN 15 Sep 2026 -- ini penyebab panic build #12.
+	 *
+	 * cgroup_bpf_inherit() hanya dipanggil dari cgroup_create(), dan cgroup
+	 * ROOT di 3.10 TIDAK dibuat lewat jalur itu; ia disiapkan di sini.
+	 * Akibatnya root->top_cgroup datang dari kzalloc/bss dengan
+	 * bpf.progs[].next == NULL, dan begitu netd memanggil BPF_PROG_ATTACH ke
+	 * root cgroup2, prog_list_length() menelusuri list itu dan mati:
+	 *
+	 *   Unable to handle kernel NULL pointer dereference at 00000010
+	 *   PC is at prog_list_length+0x14/0x2c
+	 *   LR is at __cgroup_bpf_attach+0xfc/0x33c
+	 *
+	 * Upstream tidak punya masalah ini karena cgroup_setup_root() (4.5+)
+	 * memanggil cgroup_bpf_inherit() untuk root juga.
+	 *
+	 * Di sini SENGAJA hanya bagian yang tidak bisa gagal: init_cgroup_root()
+	 * bertipe void sehingga -ENOMEM tidak punya tempat untuk dilaporkan.
+	 * Alokasi effective[] dikerjakan cgroup2_mount() yang bisa meneruskan
+	 * galat. Dengan list head sudah sah, tidak ada root -- hierarki v1
+	 * sekalipun -- yang bisa mengulang panic di atas.
+	 */
+	{
+		int i;
+
+		for (i = 0; i < ARRAY_SIZE(cgrp->bpf.progs); i++)
+			INIT_LIST_HEAD(&cgrp->bpf.progs[i]);
+	}
+#endif
 }
 
 static bool init_root_id(struct cgroupfs_root *root)
@@ -1921,8 +1952,42 @@ static struct dentry *cgroup2_mount(struct file_system_type *fs_type,
 	struct dentry *dentry;
 
 	dentry = cgroup_mount(fs_type, flags, unused_dev_name, cgroup2_opts);
-	if (!IS_ERR(dentry) && !cgroup2_root)
-		cgroup2_root = __d_cgrp(dentry);
+	if (!IS_ERR(dentry) && !cgroup2_root) {
+		struct cgroup *cgrp = __d_cgrp(dentry);
+		int err;
+
+		/*
+		 * Lengkapi apa yang init_cgroup_root() tidak bisa kerjakan:
+		 * alokasi bpf.effective[]. Tanpa ini array itu NULL dan setiap
+		 * jalur __cgroup_bpf_run_filter*() mendereference NULL pada
+		 * paket pertama setelah program terpasang.
+		 *
+		 * Hanya sekali, digerbangi !cgroup2_root: memanggilnya ulang
+		 * pada mount kedua akan me-reset list head dan membocorkan
+		 * array lama beserta program yang sudah terpasang.
+		 */
+		err = cgroup_bpf_inherit(cgrp);
+		if (err) {
+			/*
+			 * JANGAN batalkan mount yang sudah berhasil di sini.
+			 * cgroup_mount() mengembalikan dentry tanpa memegang
+			 * s_umount, sehingga deactivate_locked_super() tidak sah
+			 * dipanggil dari titik ini; membongkarnya dengan tangan
+			 * menukar kegagalan alokasi dengan kerusakan VFS.
+			 *
+			 * Membiarkan cgroup2_root NULL sudah aman dan merosot
+			 * dengan rapi: cgroup_sk_alloc() memberi NULL,
+			 * __cgroup_bpf_run_filter*() memulangkan 0 lewat
+			 * penjagaannya, dan attach tetap bisa berjalan karena
+			 * __cgroup_bpf_attach() mengalokasikan effective[]
+			 * sendiri di ujungnya. Mount berikutnya mencoba lagi.
+			 */
+			pr_warn("cgroup2: cgroup_bpf_inherit() gagal (%d); akuntansi per-aplikasi mati\n",
+				err);
+		} else {
+			cgroup2_root = cgrp;
+		}
+	}
 
 	return dentry;
 }

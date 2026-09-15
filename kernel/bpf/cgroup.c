@@ -521,11 +521,28 @@ int __cgroup_bpf_run_filter(struct sock *sk,
 		return 0;
 
 	cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
+	/*
+	 * A37: cgrp BISA NULL dan itu bukan kelainan. cgroup_sk_alloc()
+	 * menyalin cgroup2_root, yang masih NULL untuk setiap socket yang
+	 * dibuat SEBELUM /dev/cg2_bpf di-mount -- socket init dan netd sendiri
+	 * termasuk. Socket-socket itu hidup terus dan tetap mengirim paket
+	 * setelah program terpasang.
+	 */
+	if (unlikely(!cgrp))
+		return 0;
+
 	save_sk = skb->sk;
 	skb->sk = sk;
 	__skb_push(skb, offset);
-	ret = BPF_PROG_RUN_ARRAY(cgrp->bpf.effective[type], skb,
-				 bpf_prog_run_save_cb);
+	/*
+	 * Varian _CHECK, bukan BPF_PROG_RUN_ARRAY polos seperti upstream.
+	 * Upstream boleh melewatkan pemeriksaan karena SETIAP cgroup di sana
+	 * sudah lewat cgroup_bpf_inherit(); di 3.10 invarian itu terbukti bocor
+	 * (root cgroup, panic build #12) sehingga satu cabang yang hampir
+	 * selalu tidak diambil jauh lebih murah daripada kernel panic.
+	 */
+	ret = BPF_PROG_RUN_ARRAY_CHECK(cgrp->bpf.effective[type], skb,
+				       bpf_prog_run_save_cb);
 	__skb_pull(skb, offset);
 	skb->sk = save_sk;
 	return ret == 1 ? 0 : -EPERM;
@@ -571,7 +588,18 @@ int __cgroup_bpf_run_filter_sock_addr(struct sock *sk,
 	}
 
 	cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
-	ret = BPF_PROG_RUN_ARRAY(cgrp->bpf.effective[type], &ctx, BPF_PROG_RUN);
+	/*
+	 * A37: cgrp BISA NULL dan itu bukan kelainan. cgroup_sk_alloc()
+	 * menyalin cgroup2_root, yang masih NULL untuk setiap socket yang
+	 * dibuat SEBELUM /dev/cg2_bpf di-mount -- socket init dan netd sendiri
+	 * termasuk. Socket-socket itu hidup terus dan tetap mengirim paket
+	 * setelah program terpasang.
+	 */
+	if (unlikely(!cgrp))
+		return 0;
+
+	ret = BPF_PROG_RUN_ARRAY_CHECK(cgrp->bpf.effective[type], &ctx,
+				       BPF_PROG_RUN);
 
 	return ret == 1 ? 0 : -EPERM;
 }
@@ -583,9 +611,18 @@ static bool __cgroup_bpf_prog_array_is_empty(struct cgroup *cgrp,
 	struct bpf_prog_array *prog_array;
 	bool empty;
 
+	/*
+	 * Tanpa cgroup memang tidak ada program -- lihat catatan cgrp NULL di
+	 * __cgroup_bpf_run_filter(). Dijaga di sini, bukan di kedua pemanggil
+	 * setsockopt/getsockopt, supaya satu tempat saja yang harus benar.
+	 */
+	if (unlikely(!cgrp))
+		return true;
+
 	rcu_read_lock();
 	prog_array = rcu_dereference(cgrp->bpf.effective[attach_type]);
-	empty = bpf_prog_array_is_empty(prog_array);
+	/* NULL berarti belum ada apa-apa yang dipasang, jadi kosong. */
+	empty = !prog_array || bpf_prog_array_is_empty(prog_array);
 	rcu_read_unlock();
 	return empty;
 }
@@ -789,18 +826,32 @@ int __cgroup_bpf_run_filter_sk(struct sock *sk,
 			       enum bpf_attach_type type)
 {
 	struct cgroup *cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
-	struct bpf_prog *prog;
-	int ret = 0;
+	int ret;
 
+	/*
+	 * A37: cgrp BISA NULL dan itu bukan kelainan. cgroup_sk_alloc()
+	 * menyalin cgroup2_root, yang masih NULL untuk setiap socket yang
+	 * dibuat SEBELUM /dev/cg2_bpf di-mount -- socket init dan netd sendiri
+	 * termasuk. Socket-socket itu hidup terus dan tetap mengirim paket
+	 * setelah program terpasang.
+	 */
+	if (unlikely(!cgrp))
+		return 0;
 
-	rcu_read_lock();
-
-	prog = rcu_dereference(cgrp->bpf.effective[type]->progs[0]);
-	if (prog)
-		ret = BPF_PROG_RUN(prog, sk) == 1 ? 0 : -EPERM;
-
-	rcu_read_unlock();
-
-	return ret;
+	/*
+	 * A37, BUG DIPERBAIKI 15 Sep 2026. Versi sebelumnya menulis
+	 *
+	 *     prog = rcu_dereference(cgrp->bpf.effective[type]->progs[0]);
+	 *
+	 * yang salah dua kali. Pertama, ia mendereference effective[type] tanpa
+	 * memeriksanya, padahal array itu NULL untuk tipe yang belum pernah
+	 * dipasangi program. Kedua, ia hanya menjalankan program PERTAMA dan
+	 * diam-diam mengabaikan sisanya, sehingga BPF_F_ALLOW_MULTI tidak
+	 * berlaku di jalur ini. BPF_PROG_RUN_ARRAY_CHECK menyelesaikan
+	 * keduanya sekaligus dan sudah memegang rcu_read_lock() sendiri.
+	 */
+	ret = BPF_PROG_RUN_ARRAY_CHECK(cgrp->bpf.effective[type], sk,
+				       BPF_PROG_RUN);
+	return ret == 1 ? 0 : -EPERM;
 }
 EXPORT_SYMBOL(__cgroup_bpf_run_filter_sk);
