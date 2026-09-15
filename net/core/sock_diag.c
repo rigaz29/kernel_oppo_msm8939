@@ -25,6 +25,24 @@ int sock_diag_check_cookie(void *sk, __u32 *cookie)
 }
 EXPORT_SYMBOL_GPL(sock_diag_check_cookie);
 
+/*
+ * A37: dari upstream 33cf7c90fe2f ("net: add real socket cookies").
+ * Inilah yang dibutuhkan bpf_get_socket_cookie() -- sumber 39 galat
+ * "BpfHandler: Failed to get socket cookie" tiap boot.
+ */
+u64 sock_gen_cookie(struct sock *sk)
+{
+	while (1) {
+		u64 res = atomic64_read(&sk->sk_cookie);
+
+		if (res)
+			return res;
+		res = atomic64_inc_return(&sock_net(sk)->cookie_gen);
+		atomic64_cmpxchg(&sk->sk_cookie, 0, res);
+	}
+}
+EXPORT_SYMBOL_GPL(sock_gen_cookie);
+
 void sock_diag_save_cookie(void *sk, __u32 *cookie)
 {
 	cookie[0] = (u32)(unsigned long)sk;
@@ -52,9 +70,17 @@ EXPORT_SYMBOL_GPL(sock_diag_put_meminfo);
 int sock_diag_put_filterinfo(bool may_report_filterinfo, struct sock *sk,
 			     struct sk_buff *skb, int attrtype)
 {
-	struct nlattr *attr;
+	/*
+	 * A37: disesuaikan ke API baru. struct sk_filter tidak lagi menyimpan
+	 * len/insns; ia membungkus struct bpf_prog, dan program cBPF aslinya
+	 * disimpan di prog->orig_prog. Mengikuti upstream b382c0865ea2 --
+	 * sk_decode_filter() sudah tidak ada karena program tidak lagi perlu
+	 * dibongkar balik: bentuk klasiknya memang disimpan apa adanya.
+	 */
+	struct sock_fprog_kern *fprog;
 	struct sk_filter *filter;
-	unsigned int len;
+	struct nlattr *attr;
+	unsigned int flen;
 	int err = 0;
 
 	if (!may_report_filterinfo) {
@@ -65,22 +91,22 @@ int sock_diag_put_filterinfo(bool may_report_filterinfo, struct sock *sk,
 	rcu_read_lock();
 
 	filter = rcu_dereference(sk->sk_filter);
-	len = filter ? filter->len * sizeof(struct sock_filter) : 0;
+	if (!filter)
+		goto out;
 
-	attr = nla_reserve(skb, attrtype, len);
+	fprog = filter->prog->orig_prog;
+	if (!fprog)
+		goto out;
+
+	flen = bpf_classic_proglen(fprog);
+
+	attr = nla_reserve(skb, attrtype, flen);
 	if (attr == NULL) {
 		err = -EMSGSIZE;
 		goto out;
 	}
 
-	if (filter) {
-		struct sock_filter *fb = (struct sock_filter *)nla_data(attr);
-		int i;
-
-		for (i = 0; i < filter->len; i++, fb++)
-			sk_decode_filter(&filter->insns[i], fb);
-	}
-
+	memcpy(nla_data(attr), fprog->filter, flen);
 out:
 	rcu_read_unlock();
 	return err;

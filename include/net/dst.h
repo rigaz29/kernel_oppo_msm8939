@@ -495,4 +495,20 @@ static inline struct xfrm_state *dst_xfrm(const struct dst_entry *dst)
 }
 #endif
 
+/*
+ * A37: dari upstream. CONFIG_IP_ROUTE_CLASSID tidak menyala di kernel ini,
+ * jadi bpf_get_route_realm() mengembalikan 0.
+ */
+static inline u32 dst_tclassid(const struct sk_buff *skb)
+{
+#ifdef CONFIG_IP_ROUTE_CLASSID
+	const struct dst_entry *dst;
+
+	dst = skb_dst(skb);
+	if (dst)
+		return dst->tclassid;
+#endif
+	return 0;
+}
+
 #endif /* _NET_DST_H */

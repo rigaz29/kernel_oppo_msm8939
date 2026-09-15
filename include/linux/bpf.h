@@ -450,7 +450,14 @@ extern const struct bpf_func_proto bpf_tcp_sock_proto;
 void bpf_user_rnd_init_once(void);
 u64 bpf_user_rnd_u32(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 
-#ifdef CONFIG_INET
+/*
+ * A37: syaratnya ditambah CONFIG_BPF_TCP_SOCK. Perhatikan juga bahwa stub di
+ * cabang #else milik a6010 punya SIGNATURE BERBEDA dari deklarasi aslinya
+ * (bpf_insn_access_aux vs bpf_reg_type, dan const bpf_insn* vs dst/src/ctx_off)
+ * -- disalin dari upstream 4.14 sementara deklarasi aslinya diadaptasi ke
+ * antarmuka lama. Build dengan CONFIG_INET=n akan gagal. Stubnya diselaraskan.
+ */
+#if defined(CONFIG_INET) && defined(CONFIG_BPF_TCP_SOCK)
 bool bpf_tcp_sock_is_valid_access(int off, int size, enum bpf_access_type type,
 				    enum bpf_reg_type *reg_type);
 u32 bpf_tcp_sock_convert_ctx_access(enum bpf_access_type type,
@@ -461,19 +468,19 @@ u32 bpf_tcp_sock_convert_ctx_access(enum bpf_access_type type,
 #else
 static inline bool bpf_tcp_sock_is_valid_access(int off, int size,
 						enum bpf_access_type type,
-						struct bpf_insn_access_aux *info)
+						enum bpf_reg_type *reg_type)
 {
 	return false;
 }
 
 static inline u32 bpf_tcp_sock_convert_ctx_access(enum bpf_access_type type,
-						  const struct bpf_insn *si,
+						  int dst_reg, int src_reg,
+						  int ctx_off,
 						  struct bpf_insn *insn_buf,
-						  struct bpf_prog *prog,
-						  u32 *target_size)
+						  struct bpf_prog *prog)
 {
 	return 0;
 }
-#endif /* CONFIG_INET */
+#endif /* CONFIG_INET && CONFIG_BPF_TCP_SOCK */
 
 #endif /* _LINUX_BPF_H */

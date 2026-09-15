@@ -394,6 +394,15 @@ struct sock {
 	void			*sk_security;
 #endif
 	__u32			sk_mark;
+	/*
+	 * A37: dari upstream 86741ec25462 ("net: core: Add a UID field to
+	 * struct sock") dan 33cf7c90fe2f (sk_cookie). sk_uid dibutuhkan
+	 * bpf_get_socket_uid(); memakai sock_i_uid() TIDAK bisa karena ia
+	 * mengambil read_lock_bh sedangkan program BPF berjalan di konteks
+	 * atomik. sk_cookie dibutuhkan bpf_get_socket_cookie().
+	 */
+	kuid_t			sk_uid;
+	atomic64_t		sk_cookie;
 	u32			sk_classid;
 	struct cg_proto		*sk_cgrp;
 	void			(*sk_state_change)(struct sock *sk);
@@ -1616,7 +1625,7 @@ extern void sk_common_release(struct sock *sk);
 /* Initialise core socket variables */
 extern void sock_init_data(struct socket *sock, struct sock *sk);
 
-extern void sk_filter_release_rcu(struct rcu_head *rcu);
+/* A37: sk_filter_release_rcu() kini static di net/core/filter.c. */
 
 /**
  *	sk_filter_release - release a socket filter
@@ -1625,11 +1634,7 @@ extern void sk_filter_release_rcu(struct rcu_head *rcu);
  *	Remove a filter from a socket and release its resources.
  */
 
-static inline void sk_filter_release(struct sk_filter *fp)
-{
-	if (atomic_dec_and_test(&fp->refcnt))
-		call_rcu(&fp->rcu, sk_filter_release_rcu);
-}
+/* A37: sk_filter_release() kini di net/core/filter.c (lihat filter.h). */
 
 /*
  * A37: sk_filter_charge() dan sk_filter_uncharge() TIDAK lagi didefinisikan di
@@ -1726,6 +1731,12 @@ static inline void sock_graft(struct sock *sk, struct socket *parent)
 }
 
 extern kuid_t sock_i_uid(struct sock *sk);
+
+/* A37: dari upstream 86741ec25462. */
+static inline kuid_t sock_net_uid(const struct net *net, const struct sock *sk)
+{
+	return sk ? sk->sk_uid : make_kuid(net->user_ns, 0);
+}
 extern unsigned long sock_i_ino(struct sock *sk);
 
 static inline struct dst_entry *

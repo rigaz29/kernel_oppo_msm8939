@@ -2983,4 +2983,8 @@ do {								\
 #define PTYPE_HASH_SIZE	(16)
 #define PTYPE_HASH_MASK	(PTYPE_HASH_SIZE - 1)
 
+/* A37: dari upstream, dipakai bpf_clone_redirect(). */
+DECLARE_PER_CPU(int, xmit_recursion);
+#define XMIT_RECURSION_LIMIT	10
+
 #endif	/* _LINUX_NETDEVICE_H */

@@ -1260,6 +1260,33 @@ config SYSCTL
 config BPF
 	bool
 
+config CGROUP_BPF
+	bool "Support for BPF programs attached to cgroups"
+	depends on CGROUPS && BPF_SYSCALL
+	default n
+	help
+	  Memungkinkan program BPF dipasang ke cgroup, termasuk
+	  cgroupskb/ingress dan cgroupskb/egress yang dipakai Android untuk
+	  akuntansi data jaringan per aplikasi.
+
+	  Masih MATI: mesin pemasangannya (kernel/bpf/cgroup.c) belum
+	  disambungkan ke cgroup subsystem kernel ini.
+
+config BPF_TCP_SOCK
+	bool "BPF helper bpf_tcp_sock()"
+	depends on BPF_SYSCALL && INET
+	default n
+	help
+	  Helper bpf_tcp_sock() beserta struct bpf_tcp_sock, yang membuka isi
+	  struct tcp_sock ke program BPF.
+
+	  MATI di kernel 3.10 ini. struct tcp_sock di sini belum punya srtt_us,
+	  segs_in, segs_out, bytes_received, bytes_acked, maupun rtt_min
+	  (struct minmax) -- semuanya baru ada di 3.18 sampai 4.9. Tidak satu pun
+	  program BPF Android 13 memakainya.
+
+	  Dengan MATI, verifier MENOLAK program yang memanggil bpf_tcp_sock().
+
 config BPF_FD_ARRAY_MAPS
 	bool "BPF maps that store file descriptors"
 	depends on BPF_SYSCALL

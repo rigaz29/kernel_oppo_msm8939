@@ -664,8 +664,7 @@ void bpf_prog_destroy(struct bpf_prog *fp);
 
 int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk);
 int sk_attach_bpf(u32 ufd, struct sock *sk);
-int sk_reuseport_attach_filter(struct sock_fprog *fprog, struct sock *sk);
-int sk_reuseport_attach_bpf(u32 ufd, struct sock *sk);
+/* A37: sk_reuseport_attach_* dibuang -- lihat net/core/filter.c */
 int sk_detach_filter(struct sock *sk);
 int sk_get_filter(struct sock *sk, struct sock_filter __user *filter,
 		  unsigned int len);
