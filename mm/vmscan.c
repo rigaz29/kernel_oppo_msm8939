@@ -2019,12 +2019,31 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 * enough to get the zone back into a desirable shape, we have
 	 * to swap.  Better start now and leave the - probably heavily
 	 * thrashing - remaining file pages alone.
+	 *
+	 * A37, 15 Sep 2026 -- upstream 06226226773d ("mm, vmscan: avoid
+	 * thrashing anon lru when free + file is low"), diadaptasi dari kernel
+	 * node-based ke kernel zone-based ini.
+	 *
+	 * Penjaganya DIPERTAHANKAN, hanya diberi syarat. Sumber backport
+	 * (a6010) memakai 0bf1457f0cfc yang MEMBUANG penjaga ini seluruhnya --
+	 * dan patch itu sudah di-revert upstream oleh penulisnya sendiri
+	 * (623762517e23): ia "menimbulkan regresi pada beban yang didominasi
+	 * anonymous, reclaim jadi tidak efektif dan menjebak setiap task
+	 * pengalokasi di direct reclaim". Perangkat ini persis beban itu --
+	 * zram 768 MB, swappiness 100, cache cuma ~63 MB dari 1886 MB.
+	 *
+	 * Yang benar adalah memaksa SCAN_ANON hanya bila daftar inactive anon
+	 * memang cukup besar untuk dipanen pada prioritas ini. Kalau tidak,
+	 * daftar kecil itu hanya diaduk-aduk sementara halaman file dibiarkan.
 	 */
 	if (global_reclaim(sc)) {
 		free = zone_page_state(zone, NR_FREE_PAGES);
 		if (unlikely(file + free <= high_wmark_pages(zone))) {
-			scan_balance = SCAN_ANON;
-			goto out;
+			if (!inactive_anon_is_low(lruvec) &&
+			    get_lru_size(lruvec, LRU_INACTIVE_ANON) >> sc->priority) {
+				scan_balance = SCAN_ANON;
+				goto out;
+			}
 		}
 	}
 
