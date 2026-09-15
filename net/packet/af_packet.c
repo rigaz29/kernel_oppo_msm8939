@@ -1590,7 +1590,14 @@ out_free:
 	return err;
 }
 
-static unsigned int run_filter(const struct sk_buff *skb,
+/*
+ * A37: skb tidak lagi const. bpf_prog_run_clear_cb() memang MENULIS ke
+ * skb->cb (membersihkannya sebelum program jalan), jadi const di sini keliru --
+ * kompilator menandainya "discards const qualifier". Diperbaiki di signature,
+ * BUKAN dengan cast yang menyembunyikan masalahnya. Kedua pemanggil sudah
+ * memegang sk_buff non-const.
+ */
+static unsigned int run_filter(struct sk_buff *skb,
 				      const struct sock *sk,
 				      unsigned int res)
 {
