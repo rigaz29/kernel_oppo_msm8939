@@ -306,7 +306,16 @@ sync_nodes:
 	remove_ino_entry(sbi, ino, APPEND_INO);
 	clear_inode_flag(inode, FI_APPEND_WRITE);
 flush_out:
-	if (!atomic)
+	/*
+	 * A37: inilah satu-satunya titik yang fsync_mode=nobarrier ubah.
+	 *
+	 * f2fs_issue_flush() menerbitkan cache flush ke perangkat blok. Dengan
+	 * nobarrier ia dilewati untuk berkas non-atomic: fsync() tetap menulis
+	 * node dan data, tetapi tidak lagi menunggu eMMC menuliskan cache
+	 * tulisnya ke medium. Lebih cepat, dan mati daya mendadak bisa
+	 * menghilangkan data yang sudah di-fsync.
+	 */
+	if (!atomic && sbi->fsync_mode != FSYNC_MODE_NOBARRIER)
 		ret = f2fs_issue_flush(sbi, inode->i_ino);
 	if (!ret) {
 		remove_ino_entry(sbi, ino, UPDATE_INO);

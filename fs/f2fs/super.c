@@ -107,6 +107,7 @@ enum {
 	Opt_noinline_data,
 	Opt_data_flush,
 	Opt_mode,
+	Opt_fsync_mode,
 	Opt_io_size_bits,
 	Opt_fault_injection,
 	Opt_lazytime,
@@ -157,6 +158,7 @@ static match_table_t f2fs_tokens = {
 	{Opt_noinline_data, "noinline_data"},
 	{Opt_data_flush, "data_flush"},
 	{Opt_mode, "mode=%s"},
+	{Opt_fsync_mode, "fsync_mode=%s"},
 	{Opt_io_size_bits, "io_bits=%u"},
 	{Opt_fault_injection, "fault_injection=%u"},
 	{Opt_lazytime, "lazytime"},
@@ -494,6 +496,35 @@ static int parse_options(struct super_block *sb, char *options)
 			break;
 		case Opt_data_flush:
 			set_opt(sbi, DATA_FLUSH);
+			break;
+		case Opt_fsync_mode:
+			name = match_strdup(&args[0]);
+			if (!name)
+				return -ENOMEM;
+			if (strlen(name) == 5 && !strncmp(name, "posix", 5)) {
+				sbi->fsync_mode = FSYNC_MODE_POSIX;
+			} else if (strlen(name) == 9 &&
+					!strncmp(name, "nobarrier", 9)) {
+				sbi->fsync_mode = FSYNC_MODE_NOBARRIER;
+			} else if (strlen(name) == 6 &&
+					!strncmp(name, "strict", 6)) {
+				/*
+				 * Ditolak, bukan diam-diam dijatuhkan ke posix:
+				 * lihat catatan FSYNC_MODE_* di f2fs.h. Mount yang
+				 * gagal jauh lebih baik daripada pemilik perangkat
+				 * mengira durabilitasnya naik padahal tidak.
+				 */
+				f2fs_msg(sb, KERN_ERR,
+					 "fsync_mode=strict tidak didukung kernel ini "
+					 "(perlu daftar ino TRANS_DIR_INO); pakai posix "
+					 "atau nobarrier");
+				kfree(name);
+				return -EINVAL;
+			} else {
+				kfree(name);
+				return -EINVAL;
+			}
+			kfree(name);
 			break;
 		case Opt_mode:
 			name = match_strdup(&args[0]);
@@ -1152,6 +1183,10 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 	else if (test_opt(sbi, LFS))
 		seq_puts(seq, "lfs");
 	seq_printf(seq, ",active_logs=%u", sbi->active_logs);
+	if (sbi->fsync_mode == FSYNC_MODE_NOBARRIER)
+		seq_puts(seq, ",fsync_mode=nobarrier");
+	else
+		seq_puts(seq, ",fsync_mode=posix");
 	if (F2FS_IO_SIZE_BITS(sbi))
 		seq_printf(seq, ",io_size=%uKB", F2FS_IO_SIZE_KB(sbi));
 #ifdef CONFIG_F2FS_FAULT_INJECTION
@@ -1178,6 +1213,7 @@ static void default_options(struct f2fs_sb_info *sbi)
 {
 	/* init some FS parameters */
 	sbi->active_logs = NR_CURSEG_TYPE;
+	sbi->fsync_mode = FSYNC_MODE_POSIX;
 	sbi->inline_xattr_size = DEFAULT_INLINE_XATTR_ADDRS;
 
 	set_opt(sbi, BG_GC);
