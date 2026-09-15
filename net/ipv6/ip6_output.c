@@ -42,6 +42,7 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv6.h>
 
+#include <linux/bpf-cgroup.h>	/* A37: hook egress */
 #include <net/sock.h>
 #include <net/snmp.h>
 
@@ -149,6 +150,23 @@ static int ip6_finish_output2(struct sk_buff *skb)
 
 static int ip6_finish_output(struct sk_buff *skb)
 {
+	int __bpf_ret;
+
+	/*
+	 * A37: hook egress cgroup-BPF. Upstream (v4.14 ip_output.c:297)
+	 * memanggilnya di awal ip_finish_output() dengan parameter sk; signature
+	 * 3.10 tidak membawa sk, jadi diambil dari skb->sk -- dan makronya memang
+	 * memeriksa `sock == skb->sk` sehingga keduanya setara.
+	 *
+	 * Tanpa hook ini hanya trafik MASUK yang terhitung; program
+	 * cgroupskb/egress/stats tidak akan pernah berjalan.
+	 */
+	__bpf_ret = BPF_CGROUP_RUN_PROG_INET_EGRESS(skb->sk, skb);
+	if (__bpf_ret) {
+		kfree_skb(skb);
+		return __bpf_ret;
+	}
+
 	if ((skb->len > ip6_skb_dst_mtu(skb) && !skb_is_gso(skb)) ||
 	    dst_allfrag(skb_dst(skb)) ||
 	    (IP6CB(skb)->frag_max_size && skb->len > IP6CB(skb)->frag_max_size))

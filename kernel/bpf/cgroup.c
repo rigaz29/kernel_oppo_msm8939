@@ -189,7 +189,7 @@ int __cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 {
 	struct list_head *progs = &cgrp->bpf.progs[type];
 	struct bpf_prog *old_prog = NULL;
-	struct cgroup_subsys_state *css;
+	struct cgroup *desc;
 	struct bpf_prog_list *pl;
 	bool pl_was_allocated;
 	u32 old_flags;
@@ -243,21 +243,47 @@ int __cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 	cgrp->bpf.flags[type] = flags;
 
 	/* allocate and recompute effective prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/*
+	 * A37: iterator 3.10 BERBEDA dari upstream dan bedanya menentukan.
+	 *
+	 * css_for_each_descendant_pre(css, &cgrp->self) upstream MENYERTAKAN
+	 * cgroup awalnya. cgroup_next_descendant_pre(NULL, cgrp) di 3.10 justru
+	 * "pretends we just visited @cgroup" (kernel/cgroup.c:3174) dan langsung
+	 * mengembalikan anak pertama -- cgrp sendiri DILEWATI.
+	 *
+	 * Substitusi mentah akan membuat loop ini kosong total di root hierarki
+	 * cg2_bpf yang tidak punya anak, sehingga program tidak pernah menjadi
+	 * efektif dan seluruh akuntansi diam-diam tidak jalan. Karena itu cgrp
+	 * dikerjakan EKSPLISIT lebih dulu.
+	 *
+	 * rcu_read_lock() wajib: iterator 3.10 memasang
+	 * WARN_ON_ONCE(!rcu_read_lock_held()).
+	 */
+	err = compute_effective_progs(cgrp, type, &cgrp->bpf.inactive);
+	if (err)
+		goto cleanup;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		err = compute_effective_progs(desc, type, &desc->bpf.inactive);
-		if (err)
+		if (err) {
+			rcu_read_unlock();
 			goto cleanup;
+		}
 	}
+	rcu_read_unlock();
 
 	/* all allocations were successful. Activate all prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/* A37: cgrp eksplisit lebih dulu -- lihat catatan di atas. */
+	activate_effective_progs(cgrp, type, cgrp->bpf.inactive);
+	cgrp->bpf.inactive = NULL;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		activate_effective_progs(desc, type, desc->bpf.inactive);
 		desc->bpf.inactive = NULL;
 	}
+	rcu_read_unlock();
 
 	static_branch_inc(&cgroup_bpf_enabled_key);
 	if (old_prog) {
@@ -270,12 +296,16 @@ cleanup:
 	/* oom while computing effective. Free all computed effective arrays
 	 * since they were not activated
 	 */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/* A37: cgrp eksplisit lebih dulu -- lihat catatan di atas. */
+	bpf_prog_array_free(cgrp->bpf.inactive);
+	cgrp->bpf.inactive = NULL;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		bpf_prog_array_free(desc->bpf.inactive);
 		desc->bpf.inactive = NULL;
 	}
+	rcu_read_unlock();
 
 	/* and cleanup the prog list */
 	pl->prog = old_prog;
@@ -301,7 +331,7 @@ int __cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 	struct list_head *progs = &cgrp->bpf.progs[type];
 	u32 flags = cgrp->bpf.flags[type];
 	struct bpf_prog *old_prog = NULL;
-	struct cgroup_subsys_state *css;
+	struct cgroup *desc;
 	struct bpf_prog_list *pl;
 	int err;
 
@@ -341,21 +371,47 @@ int __cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 	}
 
 	/* allocate and recompute effective prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/*
+	 * A37: iterator 3.10 BERBEDA dari upstream dan bedanya menentukan.
+	 *
+	 * css_for_each_descendant_pre(css, &cgrp->self) upstream MENYERTAKAN
+	 * cgroup awalnya. cgroup_next_descendant_pre(NULL, cgrp) di 3.10 justru
+	 * "pretends we just visited @cgroup" (kernel/cgroup.c:3174) dan langsung
+	 * mengembalikan anak pertama -- cgrp sendiri DILEWATI.
+	 *
+	 * Substitusi mentah akan membuat loop ini kosong total di root hierarki
+	 * cg2_bpf yang tidak punya anak, sehingga program tidak pernah menjadi
+	 * efektif dan seluruh akuntansi diam-diam tidak jalan. Karena itu cgrp
+	 * dikerjakan EKSPLISIT lebih dulu.
+	 *
+	 * rcu_read_lock() wajib: iterator 3.10 memasang
+	 * WARN_ON_ONCE(!rcu_read_lock_held()).
+	 */
+	err = compute_effective_progs(cgrp, type, &cgrp->bpf.inactive);
+	if (err)
+		goto cleanup;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		err = compute_effective_progs(desc, type, &desc->bpf.inactive);
-		if (err)
+		if (err) {
+			rcu_read_unlock();
 			goto cleanup;
+		}
 	}
+	rcu_read_unlock();
 
 	/* all allocations were successful. Activate all prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/* A37: cgrp eksplisit lebih dulu -- lihat catatan di atas. */
+	activate_effective_progs(cgrp, type, cgrp->bpf.inactive);
+	cgrp->bpf.inactive = NULL;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		activate_effective_progs(desc, type, desc->bpf.inactive);
 		desc->bpf.inactive = NULL;
 	}
+	rcu_read_unlock();
 
 	/* now can actually delete it from this cgroup list */
 	list_del(&pl->node);
@@ -372,12 +428,16 @@ cleanup:
 	/* oom while computing effective. Free all computed effective arrays
 	 * since they were not activated
 	 */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
+	/* A37: cgrp eksplisit lebih dulu -- lihat catatan di atas. */
+	bpf_prog_array_free(cgrp->bpf.inactive);
+	cgrp->bpf.inactive = NULL;
 
+	rcu_read_lock();
+	cgroup_for_each_descendant_pre(desc, cgrp) {
 		bpf_prog_array_free(desc->bpf.inactive);
 		desc->bpf.inactive = NULL;
 	}
+	rcu_read_unlock();
 
 	/* and restore back old_prog */
 	pl->prog = old_prog;

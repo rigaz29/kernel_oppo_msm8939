@@ -849,6 +849,10 @@ static void cgroup_free_fn(struct work_struct *work)
 	cgrp->root->number_of_cgroups--;
 	mutex_unlock(&cgroup_mutex);
 
+#ifdef CONFIG_CGROUP_BPF
+	cgroup_bpf_put(cgrp);
+#endif
+
 	/*
 	 * We get a ref to the parent's dentry, and put the ref when
 	 * this cgroup is being freed, so it's guaranteed that the
@@ -1774,11 +1778,161 @@ static void cgroup_kill_sb(struct super_block *sb) {
 	cgroup_drop_root(root);
 }
 
+#ifdef CONFIG_CGROUP_BPF
+static struct file_system_type cgroup2_fs_type;
+#endif
+
+/*
+ * A37: dukungan cgroup-BPF di atas cgroup v1 kernel ini.
+ * ===================================================================
+ *
+ * Android memasang program BPF penghitung data per-aplikasi ke sebuah hierarki
+ * cgroup v2 di /dev/cg2_bpf (system/core/libprocessgroup/profiles/cgroups.json,
+ * ditandai "Optional": true). Hierarki itu TIDAK punya satu pun controller --
+ * ia murni titik tempel program.
+ *
+ * Mem-backport cgroup v2 sungguhan berarti mengganti seluruh subsistem cgroup
+ * dengan versi 4.x beserta fs/kernfs -- sekitar 400 KB yang menyentuh 32 berkas
+ * dan setiap controller, termasuk CONFIG_CGROUP_BFQIO khas CAF yang tidak ada
+ * di pohon 4.x mana pun.
+ *
+ * Yang dilakukan di sini jauh lebih kecil: mendaftarkan tipe filesystem
+ * bernama "cgroup2" yang memakai ulang mesin hierarki-tanpa-controller yang
+ * MEMANG SUDAH ADA di 3.10 (opsi "none" dan "name=", lihat parse_cgroupfs_options).
+ *
+ * Yang didapat: titik tempel yang sah untuk BPF_PROG_ATTACH.
+ * Yang TIDAK didapat: semantik cgroup v2 yang sesungguhnya -- hierarki tunggal,
+ * delegasi, cgroup.type, threaded mode. Tidak satu pun dibutuhkan netd.
+ */
+#ifdef CONFIG_CGROUP_BPF
+
+/* Root hierarki cgroup2, diisi saat pertama kali di-mount. */
+static struct cgroup *cgroup2_root __read_mostly;
+
+struct cgroup *cgroup_get_from_fd(int fd)
+{
+	struct cgroup *cgrp;
+	struct file *f;
+	struct dentry *dentry;
+
+	f = fget_raw(fd);
+	if (!f)
+		return ERR_PTR(-EBADF);
+
+	dentry = f->f_dentry;
+
+	/*
+	 * A37: 3.10 berbasis dentry, bukan kernfs. Keabsahan fd diperiksa dengan
+	 * memastikan superblock-nya milik cgroup2 DAN dentry-nya direktori --
+	 * bukan sekadar mempercayai pemanggil.
+	 */
+	if (!dentry || !dentry->d_sb ||
+	    dentry->d_sb->s_type != &cgroup2_fs_type ||
+	    !S_ISDIR(dentry->d_inode->i_mode)) {
+		fput(f);
+		return ERR_PTR(-EBADF);
+	}
+
+	cgrp = __d_cgrp(dentry);
+	dget(dentry);		/* dipegang sampai cgroup_put() */
+	fput(f);
+
+	return cgrp;
+}
+EXPORT_SYMBOL(cgroup_get_from_fd);
+
+void cgroup_put(struct cgroup *cgrp)
+{
+	if (cgrp && cgrp->dentry)
+		dput(cgrp->dentry);
+}
+EXPORT_SYMBOL(cgroup_put);
+
+/* Pembungkus __cgroup_bpf_*(), dilindungi cgroup_mutex seperti upstream. */
+int cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
+		      enum bpf_attach_type type, u32 flags)
+{
+	int ret;
+
+	mutex_lock(&cgroup_mutex);
+	ret = __cgroup_bpf_attach(cgrp, prog, type, flags);
+	mutex_unlock(&cgroup_mutex);
+	return ret;
+}
+
+int cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
+		      enum bpf_attach_type type, u32 flags)
+{
+	int ret;
+
+	mutex_lock(&cgroup_mutex);
+	ret = __cgroup_bpf_detach(cgrp, prog, type, flags);
+	mutex_unlock(&cgroup_mutex);
+	return ret;
+}
+
+int cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
+		     union bpf_attr __user *uattr)
+{
+	int ret;
+
+	mutex_lock(&cgroup_mutex);
+	ret = __cgroup_bpf_query(cgrp, attr, uattr);
+	mutex_unlock(&cgroup_mutex);
+	return ret;
+}
+#endif /* CONFIG_CGROUP_BPF */
+
+#ifdef CONFIG_SOCK_CGROUP_DATA
+void cgroup_sk_alloc(struct sock_cgroup_data *skcd)
+{
+	/* Lihat catatan panjang di include/linux/cgroup.h soal penyederhanaan. */
+	skcd->cgrp = cgroup2_root;
+}
+EXPORT_SYMBOL(cgroup_sk_alloc);
+
+void cgroup_sk_free(struct sock_cgroup_data *skcd)
+{
+	skcd->cgrp = NULL;
+}
+EXPORT_SYMBOL(cgroup_sk_free);
+#endif /* CONFIG_SOCK_CGROUP_DATA */
+
 static struct file_system_type cgroup_fs_type = {
 	.name = "cgroup",
 	.mount = cgroup_mount,
 	.kill_sb = cgroup_kill_sb,
 };
+
+#ifdef CONFIG_CGROUP_BPF
+/*
+ * A37: mount cgroup2 -> hierarki tanpa controller yang sudah didukung 3.10.
+ *
+ * Opsi dari userspace SENGAJA DIABAIKAN dan diganti "none,name=cgroup2".
+ * Android me-mount tanpa opsi sama sekali, dan hierarki v2 memang tidak boleh
+ * punya controller; menerima opsi bebas hanya membuka bentuk yang tak pernah
+ * diuji.
+ */
+static struct dentry *cgroup2_mount(struct file_system_type *fs_type,
+				    int flags, const char *unused_dev_name,
+				    void *data)
+{
+	static char cgroup2_opts[] = "none,name=cgroup2";
+	struct dentry *dentry;
+
+	dentry = cgroup_mount(fs_type, flags, unused_dev_name, cgroup2_opts);
+	if (!IS_ERR(dentry) && !cgroup2_root)
+		cgroup2_root = __d_cgrp(dentry);
+
+	return dentry;
+}
+
+static struct file_system_type cgroup2_fs_type = {
+	.name = "cgroup2",
+	.mount = cgroup2_mount,
+	.kill_sb = cgroup_kill_sb,
+};
+#endif /* CONFIG_CGROUP_BPF */
 
 static struct kobject *cgroup_kobj;
 
@@ -4198,6 +4352,13 @@ static long cgroup_create(struct cgroup *parent, struct dentry *dentry,
 	if (cgrp->id < 0)
 		goto err_free_name;
 
+#ifdef CONFIG_CGROUP_BPF
+	/* A37: warisi program efektif dari induk. */
+	err = cgroup_bpf_inherit(cgrp);
+	if (err)
+		goto err_free_id;
+#endif
+
 	/*
 	 * Only live parents can have children.  Note that the liveliness
 	 * check isn't strictly necessary because cgroup_mkdir() and
@@ -4726,6 +4887,10 @@ int __init cgroup_init(void)
 	}
 
 	err = register_filesystem(&cgroup_fs_type);
+#ifdef CONFIG_CGROUP_BPF
+	if (!err)
+		err = register_filesystem(&cgroup2_fs_type);
+#endif
 	if (err < 0) {
 		kobject_put(cgroup_kobj);
 		goto out;

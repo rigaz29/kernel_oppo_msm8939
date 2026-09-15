@@ -927,6 +927,39 @@ static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
 	return cgrp->parent;
 }
 
+#ifdef CONFIG_SOCK_CGROUP_DATA
+/*
+ * A37: kaitan socket -> cgroup, padanan sock_cgroup_data upstream.
+ *
+ * Upstream memadatkan prioidx dan classid net_cls/net_prio ke dalam union yang
+ * sama; di sini keduanya tidak dipakai (CONFIG_CGROUP_NET_CLASSID dan
+ * NET_PRIO mati), jadi isinya cukup satu pointer cgroup.
+ *
+ * ⚠️ PENYEDERHANAAN YANG DISENGAJA, dan batasnya harus diketahui: pointer ini
+ * selalu diisi ROOT hierarki cgroup2 (lihat cgroup_sk_alloc() di
+ * kernel/cgroup.c), bukan cgroup tempat task-nya berada. Itu BENAR untuk
+ * pemakaian yang ada -- netd memasang programnya di root /dev/cg2_bpf dan tidak
+ * pernah membuat cgroup anak di sana, sehingga seluruh trafik memang harus
+ * dihitung oleh program di root.
+ *
+ * Kalau suatu saat ada yang membuat cgroup anak di hierarki itu dan memasang
+ * program berbeda di sana, atribusinya akan salah -- semuanya tetap jatuh ke
+ * root. Saat itu tiba, yang benar adalah menyimpan hasil
+ * task_cgroup_from_root(current, &cgroup2_root) di sini.
+ */
+struct sock_cgroup_data {
+	struct cgroup *cgrp;
+};
+
+static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
+{
+	return skcd->cgrp;
+}
+
+void cgroup_sk_alloc(struct sock_cgroup_data *skcd);
+void cgroup_sk_free(struct sock_cgroup_data *skcd);
+#endif /* CONFIG_SOCK_CGROUP_DATA */
+
 #ifdef CONFIG_CGROUP_BPF
 /*
  * A37: hanya dua ini yang ditambahkan di sini. cgroup_bpf_attach/detach/query

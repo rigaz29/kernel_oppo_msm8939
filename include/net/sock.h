@@ -403,6 +403,10 @@ struct sock {
 	 */
 	kuid_t			sk_uid;
 	atomic64_t		sk_cookie;
+#ifdef CONFIG_SOCK_CGROUP_DATA
+	/* A37: cgroup yang program BPF-nya dijalankan untuk paket socket ini. */
+	struct sock_cgroup_data	sk_cgrp_data;
+#endif
 	u32			sk_classid;
 	struct cg_proto		*sk_cgrp;
 	void			(*sk_state_change)(struct sock *sk);

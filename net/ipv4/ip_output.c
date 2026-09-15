@@ -63,6 +63,7 @@
 #include <linux/init.h>
 
 #include <net/snmp.h>
+#include <linux/bpf-cgroup.h>	/* A37: hook egress */
 #include <net/ip.h>
 #include <net/protocol.h>
 #include <net/route.h>
@@ -224,6 +225,23 @@ static inline int ip_skb_dst_mtu(struct sk_buff *skb)
 
 static int ip_finish_output(struct sk_buff *skb)
 {
+	int __bpf_ret;
+
+	/*
+	 * A37: hook egress cgroup-BPF. Upstream (v4.14 ip_output.c:297)
+	 * memanggilnya di awal ip_finish_output() dengan parameter sk; signature
+	 * 3.10 tidak membawa sk, jadi diambil dari skb->sk -- dan makronya memang
+	 * memeriksa `sock == skb->sk` sehingga keduanya setara.
+	 *
+	 * Tanpa hook ini hanya trafik MASUK yang terhitung; program
+	 * cgroupskb/egress/stats tidak akan pernah berjalan.
+	 */
+	__bpf_ret = BPF_CGROUP_RUN_PROG_INET_EGRESS(skb->sk, skb);
+	if (__bpf_ret) {
+		kfree_skb(skb);
+		return __bpf_ret;
+	}
+
 #if defined(CONFIG_NETFILTER) && defined(CONFIG_XFRM)
 	/* Policy lookup after SNAT yielded a new policy */
 	if (skb_dst(skb)->xfrm != NULL) {
