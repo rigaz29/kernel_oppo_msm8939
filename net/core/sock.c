@@ -125,6 +125,7 @@
 #include <net/net_namespace.h>
 #include <net/request_sock.h>
 #include <net/sock.h>
+#include <linux/cgroup.h>
 #include <linux/sock_diag.h>
 #include <linux/net_tstamp.h>
 #include <net/xfrm.h>
@@ -2316,6 +2317,11 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 		sk->sk_wq	=	NULL;
 		sk->sk_uid	=	make_kuid(sock_net(sk)->user_ns, 0);
 	}
+
+#ifdef CONFIG_SOCK_CGROUP_DATA
+	/* A37: kaitkan socket ke cgroup sejak dibuat. */
+	cgroup_sk_alloc(&sk->sk_cgrp_data);
+#endif
 
 	spin_lock_init(&sk->sk_dst_lock);
 	rwlock_init(&sk->sk_callback_lock);

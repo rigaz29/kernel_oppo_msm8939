@@ -1260,6 +1260,14 @@ config SYSCTL
 config BPF
 	bool
 
+config SOCK_CGROUP_DATA
+	bool
+	depends on CGROUP_BPF
+	default y if CGROUP_BPF
+	help
+	  Menyimpan kaitan socket -> cgroup di struct sock, supaya program BPF
+	  yang terpasang pada cgroup bisa dijalankan untuk paket socket itu.
+
 config CGROUP_BPF
 	bool "Support for BPF programs attached to cgroups"
 	depends on CGROUPS && BPF_SYSCALL
