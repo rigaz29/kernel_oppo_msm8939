@@ -280,6 +280,28 @@ enum {
 	MAX_INO_ENTRY,		/* max. list */
 };
 
+/*
+ * A37: opsi mount fsync_mode, backport dari 4.17.
+ *
+ * POSIX     - perilaku baku dan perilaku kernel ini SEBELUM backport: fsync()
+ *             menerbitkan cache flush ke perangkat.
+ * NOBARRIER - lewati flush itu untuk berkas non-atomic. Lebih cepat, tetapi
+ *             menukar ketahanan terhadap mati daya mendadak: data yang sudah
+ *             di-fsync bisa masih tertinggal di cache tulis eMMC.
+ * STRICT    - TIDAK DIDUKUNG di kernel ini, dan ditolak saat mount. Mode itu
+ *             memaksa checkpoint ketika direktori induk punya transaksi yang
+ *             belum tuntas, dan untuk itu perlu daftar ino TRANS_DIR_INO yang
+ *             belum ada di sini. Menambahkannya setengah jalan pada sistem
+ *             berkas berarti mempertaruhkan data demi mode yang justru
+ *             MEMPERLAMBAT fsync -- tidak sepadan. Ditolak terang-terangan,
+ *             bukan diam-diam dijatuhkan ke POSIX.
+ */
+enum {
+	FSYNC_MODE_POSIX,
+	FSYNC_MODE_STRICT,
+	FSYNC_MODE_NOBARRIER,
+};
+
 struct ino_entry {
 	struct list_head list;		/* list head */
 	nid_t ino;			/* inode number */
@@ -1186,6 +1208,7 @@ struct f2fs_sb_info {
 	unsigned int total_valid_node_count;	/* valid node block count */
 	loff_t max_file_blocks;			/* max block index of file */
 	int active_logs;			/* # of active logs */
+	int fsync_mode;				/* fsync policy, FSYNC_MODE_* */
 	int dir_level;				/* directory level */
 	int inline_xattr_size;			/* inline xattr size */
 	unsigned int trigger_ssr_threshold;	/* threshold to trigger ssr */
