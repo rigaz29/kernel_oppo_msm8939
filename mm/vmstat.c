@@ -703,6 +703,21 @@ static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
 #define TEXTS_FOR_ZONES(xx) TEXT_FOR_DMA(xx) TEXT_FOR_DMA32(xx) xx "_normal", \
 					TEXT_FOR_HIGHMEM(xx) xx "_movable",
 
+/*
+ * Sama seperti di atas, kecuali slot zona TERAKHIR memakai nama DATAR tanpa
+ * akhiran. lmkd Android 13 membaca "pgscan_kswapd" dan "pgscan_direct" begitu
+ * saja (system/memory/lmkd/lmkd.cpp:477-478) sedangkan kernel ini hanya
+ * mengekspor bentuk per-zona, sehingga keduanya selalu terbaca 0 dan seluruh
+ * penentuan reclaim state di lmkd mati: DIRECT_RECL_AND_THRASHING tidak pernah
+ * terpicu dan polling tidak pernah naik saat direct reclaim.
+ *
+ * Nilainya diisi di vmstat_start() dengan jumlah SELURUH zona. Ongkosnya
+ * "pgscan_kswapd_movable" dan "pgscan_direct_movable" tidak lagi muncul;
+ * di perangkat ini ZONE_MOVABLE tidak punya satu halaman pun.
+ */
+#define TEXTS_FOR_ZONES_LMKD(xx) TEXT_FOR_DMA(xx) TEXT_FOR_DMA32(xx) xx "_normal", \
+					TEXT_FOR_HIGHMEM(xx) xx,
+
 const char * const vmstat_text[] = {
 	/* Zoned VM counters */
 	"nr_free_pages",
@@ -770,8 +785,8 @@ const char * const vmstat_text[] = {
 	TEXTS_FOR_ZONES("pgrefill")
 	TEXTS_FOR_ZONES("pgsteal_kswapd")
 	TEXTS_FOR_ZONES("pgsteal_direct")
-	TEXTS_FOR_ZONES("pgscan_kswapd")
-	TEXTS_FOR_ZONES("pgscan_direct")
+	TEXTS_FOR_ZONES_LMKD("pgscan_kswapd")
+	TEXTS_FOR_ZONES_LMKD("pgscan_direct")
 	"pgscan_direct_throttle",
 
 #ifdef CONFIG_NUMA
@@ -1230,6 +1245,25 @@ static void *vmstat_start(struct seq_file *m, loff_t *pos)
 	all_vm_events(v);
 	v[PGPGIN] /= 2;		/* sectors -> kbytes */
 	v[PGPGOUT] /= 2;
+
+	/*
+	 * Isi slot bernama datar "pgscan_kswapd" / "pgscan_direct" untuk lmkd
+	 * dengan jumlah seluruh zona -- lihat TEXTS_FOR_ZONES_LMKD di atas.
+	 *
+	 * FOR_ALL_ZONES() menghasilkan satu blok entri berurutan per pencacah,
+	 * dan slot MOVABLE adalah yang terakhir di bloknya. Panjang blok dihitung
+	 * kompiler dari jarak antara dua blok yang bersebelahan, jadi ini tetap
+	 * benar berapa pun zona yang aktif di .config.
+	 *
+	 * Dikerjakan DI SINI, bukan di vmstat_next(): seq_file memanggil ulang
+	 * start() dengan posisi tersimpan setiap kali buffer keluaran penuh, dan
+	 * /proc/vmstat jauh lebih besar dari satu buffer. Perbaikan yang hanya
+	 * ada di next() akan terlewat bila batas buffer jatuh tepat di entri ini.
+	 */
+	for (i = 1; i < PGSCAN_DIRECT_MOVABLE - PGSCAN_KSWAPD_MOVABLE; i++) {
+		v[PGSCAN_KSWAPD_MOVABLE] += v[PGSCAN_KSWAPD_MOVABLE - i];
+		v[PGSCAN_DIRECT_MOVABLE] += v[PGSCAN_DIRECT_MOVABLE - i];
+	}
 #endif
 	return (unsigned long *)m->private + *pos;
 }
