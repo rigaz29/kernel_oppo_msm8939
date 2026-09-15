@@ -21,6 +21,8 @@
 #include <linux/xattr.h>
 #include <linux/fs.h>
 
+#include <linux/bpf-cgroup.h>	/* A37: struct cgroup_bpf */
+
 #ifdef CONFIG_CGROUPS
 
 struct cgroupfs_root;
@@ -187,6 +189,11 @@ struct cgroup {
 
 	struct cgroup *parent;		/* my parent */
 	struct dentry *dentry;		/* cgroup fs entry, RCU protected */
+
+#ifdef CONFIG_CGROUP_BPF
+	/* A37: penyimpanan program BPF yang terpasang pada cgroup ini. */
+	struct cgroup_bpf bpf;
+#endif
 
 	/*
 	 * This is a copy of dentry->d_name, and it's needed because
@@ -909,5 +916,25 @@ static inline int subsys_cgroup_allow_attach(struct cgroup *cgrp,
 	return 0;
 }
 #endif /* !CONFIG_CGROUPS */
+
+/*
+ * A37: padanan cgroup_parent() 4.x. Di 3.10 induknya langsung di cgrp->parent;
+ * helper ini ada supaya kode yang di-backport (kernel/bpf/cgroup.c) tidak perlu
+ * diubah di setiap tempat.
+ */
+static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
+{
+	return cgrp->parent;
+}
+
+#ifdef CONFIG_CGROUP_BPF
+/*
+ * A37: hanya dua ini yang ditambahkan di sini. cgroup_bpf_attach/detach/query
+ * SUDAH dideklarasikan di <linux/bpf-cgroup.h> (baris 52-57); mendeklarasikan
+ * ulang di sini menimbulkan "conflicting types".
+ */
+struct cgroup *cgroup_get_from_fd(int fd);
+void cgroup_put(struct cgroup *cgrp);
+#endif /* CONFIG_CGROUP_BPF */
 
 #endif /* _LINUX_CGROUP_H */
