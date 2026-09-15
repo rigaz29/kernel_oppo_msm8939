@@ -2494,6 +2494,7 @@ static inline int __skb_grow_rcsum(struct sk_buff *skb, unsigned int len)
 }
 
 int skb_ensure_writable(struct sk_buff *skb, int write_len);
+#define HAVE_SKB_ENSURE_WRITABLE 1	/* A37: penanda untuk shim kompat (mis. wireguard) */
 
 
 /**
