@@ -112,6 +112,7 @@
 #include <net/raw.h>
 #include <net/icmp.h>
 #include <net/inet_common.h>
+#include <linux/bpf-cgroup.h>
 #include <net/xfrm.h>
 #include <net/net_namespace.h>
 #include <net/secure_seq.h>
@@ -423,6 +424,28 @@ lookup_protocol:
 
 	if (sk->sk_prot->init) {
 		err = sk->sk_prot->init(sk);
+		if (err) {
+			sk_common_release(sk);
+			goto out;
+		}
+	}
+
+	/*
+	 * A37: penegakan izin android.permission.INTERNET di kernel.
+	 *
+	 * Program netd "cgroupsock/inet/create" membaca uid_permission_map dan
+	 * memulangkan 0 kalau aplikasi tidak punya izin INTERNET, sehingga
+	 * socket()-nya gagal di sini alih-alih paketnya dibuang belakangan.
+	 *
+	 * Hanya untuk socket userspace: `kern` menandai socket yang dibuat
+	 * kernel sendiri, dan itu tidak punya uid pemanggil yang bermakna.
+	 *
+	 * Sebelum ini uid_permission_map diisi netd tetapi TIDAK ADA yang
+	 * membacanya -- netd.c:439 satu-satunya pemakainya, dan programnya tidak
+	 * pernah dimuat karena digerbangi KVER(4,14,0).
+	 */
+	if (!kern) {
+		err = BPF_CGROUP_RUN_PROG_INET_SOCK(sk);
 		if (err)
 			sk_common_release(sk);
 	}
