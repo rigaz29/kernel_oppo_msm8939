@@ -775,36 +775,8 @@ int32_t msm_sensor_driver_probe(void *setting,
 		rc = 0;
 		goto free_slave_info;
 	} else if (s_ctrl->is_probe_succeed == 1) {
-		/*
-		 * A37, 16 Sep 2026: rc = 0, BUKAN -EINVAL. Diselaraskan dengan
-		 * cabang #else di bawah, yaitu perilaku AOSP/CAF asli.
-		 *
-		 * Perangkat ini membawa enam kandidat sensor untuk dua slot
-		 * (imx179, ov5648 x2, s5k3h7 x2, hi545), dan HAL memang
-		 * mem-probe kandidat satu per satu sampai ada yang cocok.
-		 * Begitu satu slot sudah ter-probe, kandidat berikutnya untuk
-		 * slot yang sama PASTI tidak cocok -- itu keadaan normal, bukan
-		 * galat. Komentar di cabang #else menyebutnya terang-terangan:
-		 * "Ignore this probe".
-		 *
-		 * Cabang OPPO ini justru memulangkan -EINVAL, sehingga seluruh
-		 * urutan probe gugur. Terlihat di dmesg sebagai
-		 *
-		 *   slot 1 has some other sensor
-		 *   msm_sensor_driver_probe rc -22
-		 *   VIDIOC_MSM_SENSOR_INIT_CFG failed
-		 *
-		 * dan dari situ merambat: init sensor gagal -> QCamera2HWI
-		 * gagal tetapi camera_device_open tetap memulangkan sukses
-		 * dengan priv NULL -> camera_set_callbacks mati SIGSEGV ->
-		 * mediaserver masuk lingkaran restart dan kamera tidak bisa
-		 * dibuka sampai perangkat di-reboot.
-		 *
-		 * Pesan pr_err dipertahankan supaya kondisinya tetap terlihat
-		 * di log; yang diubah hanya bahwa ia tidak lagi dianggap galat.
-		 */
 		pr_err("slot %d has some other sensor\n", slave_info->camera_id);
-		rc = 0;
+		rc = -EINVAL;
 		goto free_slave_info;
 	}
 #else
