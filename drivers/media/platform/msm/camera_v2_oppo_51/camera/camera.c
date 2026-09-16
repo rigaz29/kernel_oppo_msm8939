@@ -621,7 +621,22 @@ static int camera_v4l2_open(struct file *filep)
 		if (rc < 0) {
 			pr_err("%s : creation of command_ack queue failed Line %d rc %d\n",
 					__func__, __LINE__, rc);
-			goto session_fail;
+			/*
+			 * A37: stream_q_fail, BUKAN session_fail.
+			 *
+			 * pm_stay_awake() hanya dipanggil di cabang pembukaan
+			 * PERTAMA di atas. Cabang ini adalah pembukaan stream
+			 * berikutnya, jadi ia tidak memegang wakelock apa pun.
+			 * Melompat ke session_fail akan menjalankan pm_relax()
+			 * dan MELEPAS wakelock milik pembukaan pertama padahal
+			 * stream-nya masih terbuka -- perangkat bisa suspend
+			 * saat kamera sedang dipakai.
+			 *
+			 * Label baru di bawah melewati pm_relax() dan tetap
+			 * membersihkan vb2 queue serta file handle milik filep
+			 * ini, yang memang perlu dibersihkan.
+			 */
+			goto stream_q_fail;
 		}
 	}
 	idx |= (1 << find_first_zero_bit((const unsigned long *)&opn_idx,
@@ -637,6 +652,7 @@ command_ack_q_fail:
 	msm_destroy_session(pvdev->vdev->num);
 session_fail:
 	pm_relax(&pvdev->vdev->dev);
+stream_q_fail:
 	camera_v4l2_vb2_q_release(filep);
 vb2_q_fail:
 	camera_v4l2_fh_release(filep);
