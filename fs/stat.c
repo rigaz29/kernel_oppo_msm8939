@@ -275,10 +275,12 @@ SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
 	struct kstat stat;
 	int error;
 
-#ifdef CONFIG_KSU
-	extern int ksu_handle_stat(int *, const char __user **, int *);
-	ksu_handle_stat(&dfd, &filename, &flag);
-#endif
+	/*
+	 * KSU: hook sucompat stat SENGAJA tidak dipasang -- alasan sama seperti
+	 * faccessat di fs/open.c: userspace_stack_buffer() meng-clobber stack
+	 * proses yang stat su lebih dulu -> SIGSEGV. /system/bin/su ASLI ada,
+	 * jadi stat lolos alami; redirect su->ksud dilakukan hook execve.
+	 */
 
 	error = vfs_fstatat(dfd, filename, &stat, flag);
 	if (error)
@@ -424,10 +426,12 @@ SYSCALL_DEFINE4(fstatat64, int, dfd, const char __user *, filename,
 	struct kstat stat;
 	int error;
 
-#ifdef CONFIG_KSU
-	extern int ksu_handle_stat(int *, const char __user **, int *);
-	ksu_handle_stat(&dfd, &filename, &flag);
-#endif
+	/*
+	 * KSU: hook sucompat stat SENGAJA tidak dipasang -- alasan sama seperti
+	 * faccessat di fs/open.c: userspace_stack_buffer() meng-clobber stack
+	 * proses yang stat su lebih dulu -> SIGSEGV. /system/bin/su ASLI ada,
+	 * jadi stat lolos alami; redirect su->ksud dilakukan hook execve.
+	 */
 
 
 	error = vfs_fstatat(dfd, filename, &stat, flag);
