@@ -877,3 +877,9 @@ CONFIG_QMI_ENCDEC=y
 # Android 16 yang mkbootimg-nya membuang opsi --dt. LineageOS 20 masih memakai
 # tabel DT terpisah lewat dtbtool di device tree, jadi komentar itu hanya
 # menyesatkan pembaca berikutnya.
+# KernelSU (backslashxx fork, manual hooks untuk kernel 3.10)
+CONFIG_KSU=y
+# CONFIG_KSU_KPROBES_KSUD is not set
+# CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
+# CONFIG_KSU_TAMPER_SYSCALL_TABLE is not set
+CONFIG_KSU_LSM_SECURITY_HOOKS=y

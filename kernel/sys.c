@@ -466,6 +466,10 @@ static DEFINE_MUTEX(reboot_mutex);
 SYSCALL_DEFINE4(reboot, int, magic1, int, magic2, unsigned int, cmd,
 		void __user *, arg)
 {
+#if defined(CONFIG_KSU) && !defined(CONFIG_KSU_KPROBES_KSUD)
+	extern int ksu_handle_sys_reboot(int, int, unsigned int, void __user **);
+	ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);
+#endif
 	struct pid_namespace *pid_ns = task_active_pid_ns(current);
 	char buffer[256];
 	int ret = 0;
