@@ -307,10 +307,15 @@ SYSCALL_DEFINE4(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
  */
 SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 {
-#ifdef CONFIG_KSU
-	extern int ksu_handle_faccessat(int *, const char __user **, int *, int *);
-	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
-#endif
+	/*
+	 * KSU: hook sucompat faccessat SENGAJA tidak dipasang. Redirect
+	 * user-pointer lewat userspace_stack_buffer() menulis di bawah SP user
+	 * dan meng-clobber data stack hidup proses yang cek-keberadaan su
+	 * sebelum exec (mksh PATH-search, toybox which, bionic env) -> SIGSEGV.
+	 * Tak diperlukan: ROM ini punya /system/bin/su ASLI, jadi cek keberadaan
+	 * lolos alami; redirect su->ksud cukup di hook execve fs/exec.c (varian
+	 * buffer kernel, aman). Lihat drivers/kernelsu/feature/sucompat.c.
+	 */
 	const struct cred *old_cred;
 	struct cred *override_cred;
 	struct path path;
