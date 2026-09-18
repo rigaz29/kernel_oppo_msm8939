@@ -9,7 +9,23 @@
 
 static bool ksu_su_compat_enabled __read_mostly = true;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+/*
+ * A37 (kernel 3.10 / arm64): PAKSA metode start_stack (cabang #else di bawah),
+ * BUKAN metode "tulis di bawah SP aktif".
+ *
+ * Metode SP menulis len byte di current_user_stack_pointer()-len, tepat di
+ * bawah SP proses pemanggil. Untuk proses bionic yang cek-keberadaan su
+ * (faccessat/newfstatat) SEBELUM exec -- mksh saat PATH-search, toybox which,
+ * bionic env -- tulisan itu meng-clobber data stack HIDUP di frame aktif,
+ * sehingga proses SIGSEGV segera setelah syscall kembali. Deterministik dan
+ * terbukti di perangkat: `su` full-path/xargs (execve langsung, buffer kernel)
+ * bekerja, tapi `su` bare / env su / which su crash.
+ *
+ * Metode start_stack menulis dekat puncak stack (region argv/envp) yang tak
+ * disentuh frame aktif thread mana pun, jadi tak meng-crash proses. Ini pula
+ * buffer yang dipakai feature/selinux_hide.c di fork ini.
+ */
+#if 0 && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 static void __user *userspace_stack_buffer(const void *d, size_t len)
 {
 	// To avoid having to mmap a page in userspace, just write below the stack
