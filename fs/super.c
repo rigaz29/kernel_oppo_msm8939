@@ -35,7 +35,16 @@
 #include <linux/fsnotify.h>
 #include <linux/lockdep.h>
 #include <linux/list_lru.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs_def.h>
+#include <linux/jump_label.h>
+#endif // #ifdef CONFIG_KSU_SUSFS
 #include "internal.h"
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+extern bool susfs_is_current_ksu_domain(void);
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
 
 LIST_HEAD(super_blocks);
@@ -820,6 +829,26 @@ int get_anon_bdev(dev_t *p)
 {
 	int dev;
 	int error;
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
+		if (susfs_is_current_ksu_domain()) {
+			if (!ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC))
+				return -ENOMEM;
+			spin_lock(&unnamed_dev_lock);
+			error = ida_get_new_above(&unnamed_dev_ida,
+						DEFAULT_KSU_MNT_MINOR_DEV,
+						&dev);
+			spin_unlock(&unnamed_dev_lock);
+			if (error == -EAGAIN)
+				goto retry;
+			if (error)
+				return -EMFILE;
+			*p = MKDEV(0, dev & MINORMASK);
+			return 0;
+		}
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 
  retry:
 	if (ida_pre_get(&unnamed_dev_ida, GFP_ATOMIC) == 0)

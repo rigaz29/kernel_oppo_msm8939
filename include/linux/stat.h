@@ -32,6 +32,9 @@ struct kstat {
 	struct timespec	ctime;
 	unsigned long	blksize;
 	unsigned long long	blocks;
+	/* backported from 4.11+: mask of the above fields, used by susfs
+	 * sus_kstat to tag spoofed attrs (never copied to userspace) */
+	u32		result_mask;
 };
 
 #endif

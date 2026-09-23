@@ -88,6 +88,9 @@
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
 #include <linux/qmp_sphinx_instrumentation.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+#include <linux/susfs_def.h>
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -2040,6 +2043,10 @@ proc_map_files_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 
 		for (vma = mm->mmap, pos = 2; vma; vma = vma->vm_next) {
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+			if (vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+				continue;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 			if (vma->vm_file && ++pos > filp->f_pos)
 				nr_files++;
 		}
@@ -2060,6 +2067,10 @@ proc_map_files_readdir(struct file *filp, void *dirent, filldir_t filldir)
 					vma = vma->vm_next) {
 				if (!vma->vm_file)
 					continue;
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+				if (SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
+					continue;
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 				if (++pos <= filp->f_pos)
 					continue;
 
