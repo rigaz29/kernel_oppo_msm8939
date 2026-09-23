@@ -36,9 +36,16 @@
 #include <linux/posix_acl.h>
 #include <linux/hash.h>
 #include <asm/uaccess.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+#include <linux/susfs_def.h>
+#endif
 
 #include "internal.h"
 #include "mount.h"
+
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+extern bool susfs_is_inode_sus_path(struct inode *inode);
+#endif
 
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
@@ -1436,6 +1443,15 @@ static int lookup_fast(struct nameidata *nd,
 		dentry = __d_lookup_rcu(parent, &nd->last, &seq, nd->inode);
 		if (!dentry)
 			goto unlazy;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if ((nd->state & (ND_STATE_LOOKUP_LAST | ND_STATE_OPEN_LAST)) &&
+			dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode))
+		{
+			// no dput() here, __d_lookup_rcu() does not take a reference
+			dentry = NULL;
+			goto unlazy;
+		}
+#endif
 
 		/*
 		 * This sequence count validates that the inode matches
@@ -1476,6 +1492,14 @@ unlazy:
 			return -ECHILD;
 	} else {
 		dentry = __d_lookup(parent, &nd->last);
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if ((nd->state & (ND_STATE_LOOKUP_LAST | ND_STATE_OPEN_LAST)) &&
+			dentry && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode))
+		{
+			dput(dentry);
+			dentry = NULL;
+		}
+#endif
 	}
 
 	if (unlikely(!dentry))
@@ -1524,6 +1548,15 @@ static int lookup_slow(struct nameidata *nd, struct path *path)
 	mutex_unlock(&parent->d_inode->i_mutex);
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	// 4.4 hides here via lookup_dcache() returning NULL; 3.10's
+	// lookup_slow() goes straight to __lookup_hash(), so hide after the
+	// dentry is materialized. Ungated, matching the 4.4 lookup_dcache hook.
+	if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+		dput(dentry);
+		return -ENOENT;
+	}
+#endif
 	path->mnt = nd->path.mnt;
 	path->dentry = dentry;
 	err = follow_managed(path, nd->flags);
@@ -1608,7 +1641,11 @@ static inline int walk_component(struct nameidata *nd, struct path *path,
 	if (unlikely(err)) {
 		if (err < 0)
 			goto out_err;
-
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		if (nd->state & ND_STATE_LOOKUP_LAST) {
+			nd->flags |= ND_FLAGS_LOOKUP_LAST;
+		}
+#endif
 		err = lookup_slow(nd, path);
 		if (err < 0)
 			goto out_err;
@@ -1901,6 +1938,16 @@ static int link_path_walk(const char *name, struct nameidata *nd)
 			if (err)
 				return err;
 		}
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		{
+			struct dentry *dentry = nd->path.dentry;
+			if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
+				// - No need to dput() here
+				// - return -ENOENT here since it is walking the sub path of sus path
+				return -ENOENT;
+			}
+		}
+#endif
 		if (!can_lookup(nd->inode)) {
 			err = -ENOTDIR; 
 			break;
@@ -1918,6 +1965,9 @@ static int path_init(int dfd, const char *name, unsigned int flags,
 	nd->last_type = LAST_ROOT; /* if there are only slashes... */
 	nd->flags = flags | LOOKUP_JUMPED;
 	nd->depth = 0;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	nd->state = 0;
+#endif
 	if (flags & LOOKUP_ROOT) {
 		struct inode *inode = nd->root.dentry->d_inode;
 		struct vfsmount *mnt = nd->root.mnt;
@@ -2000,6 +2050,9 @@ static int path_init(int dfd, const char *name, unsigned int flags,
 
 static inline int lookup_last(struct nameidata *nd, struct path *path)
 {
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	nd->state |= ND_STATE_LOOKUP_LAST;
+#endif
 	if (nd->last_type == LAST_NORM && nd->last.name[nd->last.len])
 		nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
 
@@ -2723,6 +2776,17 @@ static int lookup_open(struct nameidata *nd, struct path *path,
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	// 3.10's lookup_dcache() cannot return NULL (its callers cannot
+	// express "hidden"), so the ungated 4.4 hide lives here for the
+	// open path; lookup_slow() has its own hook.
+	if (!need_lookup && dentry && dentry->d_inode &&
+		susfs_is_inode_sus_path(dentry->d_inode)) {
+		dput(dentry);
+		return -ENOENT;
+	}
+#endif
+
 	/* Cached positive dentry: will open in f_op->open */
 	if (!need_lookup && dentry->d_inode)
 		goto out_no_open;
@@ -2795,6 +2859,9 @@ static int do_last(struct nameidata *nd, struct path *path,
 
 	nd->flags &= ~LOOKUP_PARENT;
 	nd->flags |= op->intent;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	nd->state |= ND_STATE_OPEN_LAST;
+#endif
 
 	if (nd->last_type != LAST_NORM) {
 		error = handle_dots(nd, nd->last_type);

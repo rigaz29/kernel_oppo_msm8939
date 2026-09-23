@@ -1457,6 +1457,34 @@ static int watch_one_dir(struct watch_dir *wd)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
+/* 3.10 fsnotify: handle_event() receives a struct fsnotify_event * instead
+ * of the split mask/data/file_name arguments used by the 4.4+ macro. */
+static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
+					   struct fsnotify_mark *inode_mark,
+					   struct fsnotify_mark *vfsmount_mark,
+					   struct fsnotify_event *event)
+{
+	const unsigned char *file_name = event->file_name;
+	u32 mask = event->mask;
+
+	if (!file_name || strlen((const char *)file_name) != 7 ||
+	    memcmp(file_name, "Android", 7))
+		return 0;
+
+	if (test_and_set_bit(0, &sdcard_cleanup_scheduled))
+		return 0;
+
+	SUSFS_LOGI("'%s' detected, mask: 0x%x\n", SDCARD_ANDROID_PATH, mask);
+	SUSFS_LOGI("deferring cleanup for 5 seconds\n");
+	queue_delayed_work(system_unbound_wq, &sdcard_cleanup_dwork, 5 * HZ);
+	return 0;
+}
+
+static const struct fsnotify_ops fsnotify_ops = {
+	.handle_event = susfs_handle_sdcard_inode_event,
+};
+#else
 /*
  * fsnotify handler — runs inside an SRCU read section held by fsnotify().
  * Must not block or call fsnotify_destroy_group() (which internally calls
@@ -1485,6 +1513,7 @@ static const struct fsnotify_ops fsnotify_ops = {
 	.handle_event = susfs_handle_sdcard_inode_event,
 #endif
 };
+#endif
 
 static void __maybe_unused m_free(struct fsnotify_mark *m)
 {

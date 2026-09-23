@@ -16,6 +16,9 @@ struct nameidata {
 	struct path	root;
 	struct inode	*inode; /* path.dentry.d_inode */
 	unsigned int	flags;
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	unsigned int	state; /* susfs ND_STATE_ flags, zeroed in path_init */
+#endif
 	unsigned	seq;
 	int		last_type;
 	unsigned	depth;
