@@ -1,3 +1,8 @@
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#include <linux/susfs_def.h>
+#endif
+
 #define KSU_DRIVER_PERMISSION_SU_SESSION (1UL << 0)
 
 struct ksu_driver_context {
@@ -105,6 +110,44 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user 
 
 		return 0;
 	}
+
+#ifdef CONFIG_KSU_SUSFS
+	// susfs: ksu_susfs issues reboot(KSU_INSTALL_MAGIC1, SUSFS_MAGIC, cmd, &info)
+	if (magic2 == SUSFS_MAGIC && __kuid_val(current_cred()->uid) == 0) {
+		switch (cmd) {
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+		case CMD_SUSFS_SET_UNAME:
+			susfs_set_uname(arg);
+			return 0;
+#endif
+#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
+		case CMD_SUSFS_ENABLE_LOG:
+			susfs_enable_log(arg);
+			return 0;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+		case CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG:
+			susfs_set_cmdline_or_bootconfig(arg);
+			return 0;
+#endif
+		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
+			susfs_set_avc_log_spoofing(arg);
+			return 0;
+		case CMD_SUSFS_SHOW_ENABLED_FEATURES:
+			susfs_get_enabled_features(arg);
+			return 0;
+		case CMD_SUSFS_SHOW_VARIANT:
+			susfs_show_variant(arg);
+			return 0;
+		case CMD_SUSFS_SHOW_VERSION:
+			susfs_show_version(arg);
+			return 0;
+		default:
+			pr_info("susfs: unsupported cmd: 0x%x\n", cmd);
+			return 0;
+		}
+	}
+#endif
 
 	toolkit_handle_sys_reboot(magic1, magic2, cmd, arg);
 	return 0;

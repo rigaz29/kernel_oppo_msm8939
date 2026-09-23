@@ -239,6 +239,9 @@ static int __init kernelsu_init(void)
 	ksu_feature_init();
 
 	ksu_supercalls_init();
+#ifdef CONFIG_KSU_SUSFS
+	susfs_init();
+#endif
 
 	ksu_sucompat_init(); // so the feature is registered
 
@@ -287,6 +290,9 @@ device_initcall(kernelsu_init);
 char ksu_block_modules[256];
 module_param_string(block_modules, ksu_block_modules, sizeof(ksu_block_modules), 0);
 #include "downstream/module_blacklist.h"
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/susfs.h>
+#endif
 #else
 #define ksu_extend_module_blacklist() do { } while (0)
 #endif
