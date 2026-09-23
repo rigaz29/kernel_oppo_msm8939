@@ -134,7 +134,7 @@ endmenu
 
 menu "KernelSU - SUSFS"
 # Only the features already ported to this 3.10 tree are exposed here. The
-# rest (open_redirect, symbol hiding)
+# everything shipped
 # need VFS hooks that are not in yet; they get their option when ported.
 
 config KSU_SUSFS
@@ -199,5 +199,21 @@ config KSU_SUSFS_SUS_PATH
 	  Hide files/directories marked with ksu_susfs add_sus_path from
 	  path lookups and readdir of umounted app processes, plus the
 	  /sdcard decryption fsnotify monitor.
+
+config KSU_SUSFS_OPEN_REDIRECT
+	bool "Enable to spoof redirected file paths"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Redirect opens and readlinks of files marked with ksu_susfs
+	  add_open_redirect to a clean copy for app processes, and
+	  spoof their /proc/<pid>/maps entry.
+
+config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+	bool "Enable to hide KernelSU and SUSFS symbols"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide ksu_ and susfs_ symbols from /proc/kallsyms.
 
 endmenu
