@@ -9,12 +9,6 @@
 
 static bool ksu_su_compat_enabled __read_mostly = true;
 
-/*
- * Guard 4.4 (bukan 3.8) sengaja: metode "tulis di bawah SP aktif" meng-clobber
- * stack proses bionik yang cek-keberadaan su sebelum exec (mksh PATH-search,
- * toybox which, env) di kernel lama -> SIGSEGV; kernel < 4.4 pakai start_stack.
- * Selaras dengan fix upstream (backslashxx/KernelSU issue #36).
- */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
 static void __user *userspace_stack_buffer(const void *d, size_t len)
 {
