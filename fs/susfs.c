@@ -1459,7 +1459,17 @@ static int watch_one_dir(struct watch_dir *wd)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
 /* 3.10 fsnotify: handle_event() receives a struct fsnotify_event * instead
- * of the split mask/data/file_name arguments used by the 4.4+ macro. */
+ * of the split mask/data/file_name arguments used by the 4.4+ macro.
+ * 3.10's send_to_group() also calls should_send_event() unconditionally,
+ * so it must be provided; the name filter lives in the handler. */
+static bool susfs_should_send_sdcard_event(struct fsnotify_group *group, struct inode *inode,
+					   struct fsnotify_mark *inode_mark,
+					   struct fsnotify_mark *vfsmount_mark,
+					   __u32 mask, void *data, int data_type)
+{
+	return true;
+}
+
 static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
 					   struct fsnotify_mark *inode_mark,
 					   struct fsnotify_mark *vfsmount_mark,
@@ -1482,6 +1492,7 @@ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
 }
 
 static const struct fsnotify_ops fsnotify_ops = {
+	.should_send_event = susfs_should_send_sdcard_event,
 	.handle_event = susfs_handle_sdcard_inode_event,
 };
 #else
