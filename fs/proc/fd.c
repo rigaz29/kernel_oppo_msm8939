@@ -10,9 +10,18 @@
 #include <linux/seq_file.h>
 
 #include <linux/proc_fs.h>
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+#include <linux/susfs_def.h>
+#include "../mount.h"
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
 #include "internal.h"
 #include "fd.h"
+
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
+extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id, unsigned long *out_target_ino, dev_t target_dev);
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
 static int seq_show(struct seq_file *m, void *v)
 {
@@ -48,8 +57,30 @@ static int seq_show(struct seq_file *m, void *v)
 	}
 
 	if (!ret) {
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		// - 3.10's base fdinfo prints only pos and flags; the mnt_id/ino
+		//   lines below are added only for sus kstat files so their
+		//   identity can still be spoofed for parsers expecting them.
+		if (susfs_is_current_app_uid()) {
+			struct inode *inode = file_inode(file);
+			bool is_fuse = false;
+			if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
+				int mnt_id = real_mount(file->f_path.mnt)->mnt_id;
+				unsigned long ino = inode->i_ino;
+				susfs_sus_kstat_spoof_proc_fd_seq_show(&mnt_id, &ino, inode->i_sb->s_dev);
+				seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
+						(long long)file->f_pos, f_flags,
+						mnt_id,
+						ino);
+				goto bypass_orig_flow;
+			}
+		}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
                 seq_printf(m, "pos:\t%lli\nflags:\t0%o\n",
 			   (long long)file->f_pos, f_flags);
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+bypass_orig_flow:
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 		if (file->f_op->show_fdinfo)
 			ret = file->f_op->show_fdinfo(m, file);
 		fput(file);

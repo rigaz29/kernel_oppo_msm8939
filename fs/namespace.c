@@ -35,6 +35,11 @@ extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
 
 #define CL_COPY_MNT_NS BIT(25) /* used by dup_mnt_ns() */
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+#ifndef CONFIG_KSU_SUSFS_SUS_MOUNT
+#include <linux/susfs_def.h>
+#endif
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
 
 #define HASH_SHIFT ilog2(PAGE_SIZE / sizeof(struct list_head))
 #define HASH_SIZE (1UL << HASH_SHIFT)
@@ -3229,3 +3234,43 @@ const struct proc_ns_operations mntns_operations = {
 	.install	= mntns_install,
 	.inum		= mntns_inum,
 };
+
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
+/* - To retrieve the non sus mnt_id from mount */
+int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt) {
+	struct mount *mnt = orig_mnt;
+	int mnt_id;
+
+	if (mnt->mnt_id < DEFAULT_KSU_MNT_ID)
+		return mnt->mnt_id;
+
+	br_write_lock(&vfsmount_lock);
+	for (; mnt && mnt->mnt_parent && mnt != mnt->mnt_parent && mnt->mnt_id >= DEFAULT_KSU_MNT_ID; mnt = mnt->mnt_parent) { }
+	mnt_id = mnt->mnt_id;
+	br_write_unlock(&vfsmount_lock);
+	return mnt_id;
+}
+
+/* - To retrieve the non sus vfsmount from vfsmount, takes a reference on &mnt->mnt and mnt->mnt.mnt_root */
+struct vfsmount *susfs_get_non_sus_vfsmnt_from_vfsmnt(struct vfsmount *vfsmnt) {
+	struct mount *mnt = real_mount(vfsmnt);
+
+	if (mnt->mnt_id < DEFAULT_KSU_MNT_ID) {
+		mntget(&mnt->mnt);
+		dget(mnt->mnt.mnt_root);
+		return &mnt->mnt;
+	}
+
+	br_write_lock(&vfsmount_lock);
+	for (; mnt && mnt->mnt_parent && mnt != mnt->mnt_parent && mnt->mnt_id >= DEFAULT_KSU_MNT_ID; mnt = mnt->mnt_parent) { }
+	mntget(&mnt->mnt);
+	if (!mnt->mnt.mnt_root || IS_ERR(mnt->mnt.mnt_root)) {
+		mntput(&mnt->mnt);
+		br_write_unlock(&vfsmount_lock);
+		return vfsmnt;
+	}
+	dget(mnt->mnt.mnt_root);
+	br_write_unlock(&vfsmount_lock);
+	return &mnt->mnt;
+}
+#endif // #if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_KSTAT)
