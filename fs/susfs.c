@@ -892,6 +892,31 @@ void susfs_spoof_cmdline_or_bootconfig(struct seq_file *m) {
 
 /* open_redirect */
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#include <linux/audit.h>
+
+/* 3.10 has no getname_kernel(); build one with the same contract as
+ * getname_flags() so putname() frees it correctly (embedded allocation
+ * plus audit_getname() registration). */
+static struct filename *susfs_getname_kernel(const char *pathname)
+{
+	struct filename *result = __getname();
+	char *kname;
+
+	if (unlikely(!result))
+		return ERR_PTR(-ENOMEM);
+	if (unlikely(strlen(pathname) >= PATH_MAX - sizeof(*result))) {
+		final_putname(result);
+		return ERR_PTR(-ENAMETOOLONG);
+	}
+	kname = (char *)result + sizeof(*result);
+	strlcpy(kname, pathname, PATH_MAX);
+	result->name = kname;
+	result->uptr = NULL;
+	result->separate = false;
+	audit_getname(result);
+	return result;
+}
+
 static DEFINE_MUTEX(susfs_mutex_lock_open_redirect);
 static DEFINE_HASHTABLE(OPEN_REDIRECT_HLIST, 14);
 DEFINE_SRCU(susfs_srcu_open_redirect);
@@ -1091,7 +1116,7 @@ struct filename *susfs_open_redirect_spoof_do_sys_openat(struct inode *inode) {
 			}
 			SUSFS_LOGI("redirect path '%s' to '%s', uid_scheme: %d\n",
 					entry->info.target_pathname, entry->info.redirected_pathname, entry->info.uid_scheme);
-			new_filename = getname_kernel(entry->info.redirected_pathname);
+			new_filename = susfs_getname_kernel(entry->info.redirected_pathname);
 			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
 			return new_filename;
 		}
@@ -1217,6 +1242,18 @@ out_copy_to_user:
 
 /* susfs avc log spoofing */
 DEFINE_STATIC_KEY_FALSE(susfs_is_avc_log_spoofing_enabled);
+
+/* cached SIDs for the avc log spoofing hook in security/selinux/avc.c */
+u32 susfs_ksu_sid __read_mostly = 0;
+u32 susfs_priv_app_sid __read_mostly = 0;
+
+static void susfs_set_sid(const char *ctx, u32 *sid) {
+	int rc = security_secctx_to_secid(ctx, strlen(ctx), sid);
+	if (rc) {
+		pr_err("susfs: failed to cache '%s' SID: %d\n", ctx, rc);
+		*sid = 0;
+	}
+}
 
 void susfs_set_avc_log_spoofing(void __user **user_info) {
 	struct st_susfs_avc_log_spoofing info = {0};
@@ -1633,6 +1670,8 @@ void susfs_init(void) {
 	SUSFS_LOGI("Initializing susfs_extra_works\n");
 	INIT_WORK(&susfs_extra_works, susfs_run_extra_works);
 #endif
+	susfs_set_sid("u:r:ksu:s0", &susfs_ksu_sid);
+	susfs_set_sid("u:r:priv_app:s0:c512,c768", &susfs_priv_app_sid);
 	SUSFS_LOGI("susfs is initialized! version: " SUSFS_VERSION " \n");
 }
 
