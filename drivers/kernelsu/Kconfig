@@ -134,7 +134,7 @@ endmenu
 
 menu "KernelSU - SUSFS"
 # Only the features already ported to this 3.10 tree are exposed here. The
-# rest (sus_path, sus_kstat, sus_map, open_redirect, symbol hiding)
+# rest (sus_path, open_redirect, symbol hiding)
 # need VFS hooks that are not in yet; they get their option when ported.
 
 config KSU_SUSFS
@@ -173,5 +173,22 @@ config KSU_SUSFS_SUS_MOUNT
 	  Hide mounts created by su domain processes from /proc/mounts,
 	  /proc/<pid>/mountinfo and /proc/<pid>/mountstats for non-su
 	  processes. Can be toggled at runtime with ksu_susfs.
+
+config KSU_SUSFS_SUS_KSTAT
+	bool "Enable to spoof stat attributes of files"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Spoof stat/statfs, /proc/<pid>/fdinfo, inotify fdinfo and
+	  /proc/<pid>/maps dev/ino of files marked with ksu_susfs
+	  add_sus_kstat.
+
+config KSU_SUSFS_SUS_MAP
+	bool "Enable to hide memory maps of files"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide VMAs and map_files entries of files marked with
+	  ksu_susfs add_sus_map for umounted app processes.
 
 endmenu

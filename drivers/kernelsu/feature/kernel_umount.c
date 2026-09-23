@@ -82,7 +82,9 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 		return 0;
 	}
 
-#ifdef CONFIG_KSU_HOSTSREDIRECT
+#if defined(CONFIG_KSU_HOSTSREDIRECT) || defined(CONFIG_KSU_SUSFS)
+	// susfs needs the mark too: sus_map and the fdinfo/mountstats spoofs
+	// for non-su processes rely on TIF_KSU_UNMOUNTABLE being set here.
 	set_thread_flag(TIF_KSU_UNMOUNTABLE);
 #endif
 	// umount the target mnt

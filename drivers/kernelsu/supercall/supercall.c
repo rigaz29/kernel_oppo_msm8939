@@ -135,6 +135,20 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user 
 			susfs_set_hide_sus_mnts_for_non_su_procs(arg);
 			return 0;
 #endif
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+		case CMD_SUSFS_ADD_SUS_KSTAT:
+		case CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY:
+			susfs_add_sus_kstat(arg);
+			return 0;
+		case CMD_SUSFS_UPDATE_SUS_KSTAT:
+			susfs_update_sus_kstat(arg);
+			return 0;
+#endif
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+		case CMD_SUSFS_ADD_SUS_MAP:
+			susfs_add_sus_map(arg);
+			return 0;
+#endif
 		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
 			susfs_set_avc_log_spoofing(arg);
 			return 0;
