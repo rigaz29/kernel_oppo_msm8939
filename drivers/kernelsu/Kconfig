@@ -134,7 +134,7 @@ endmenu
 
 menu "KernelSU - SUSFS"
 # Only the features already ported to this 3.10 tree are exposed here. The
-# rest (sus_path, sus_mount, sus_kstat, sus_map, open_redirect, symbol hiding)
+# rest (sus_path, sus_kstat, sus_map, open_redirect, symbol hiding)
 # need VFS hooks that are not in yet; they get their option when ported.
 
 config KSU_SUSFS
@@ -164,5 +164,14 @@ config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
 	default y
 	help
 	  Spoof the output of /proc/cmdline.
+
+config KSU_SUSFS_SUS_MOUNT
+	bool "Enable to hide sus mounts"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide mounts created by su domain processes from /proc/mounts,
+	  /proc/<pid>/mountinfo and /proc/<pid>/mountstats for non-su
+	  processes. Can be toggled at runtime with ksu_susfs.
 
 endmenu
