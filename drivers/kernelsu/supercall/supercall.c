@@ -149,6 +149,14 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user 
 			susfs_add_sus_map(arg);
 			return 0;
 #endif
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+		case CMD_SUSFS_ADD_SUS_PATH:
+			susfs_add_sus_path(arg);
+			return 0;
+		case CMD_SUSFS_ADD_SUS_PATH_LOOP:
+			susfs_add_sus_path_loop(arg);
+			return 0;
+#endif
 		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
 			susfs_set_avc_log_spoofing(arg);
 			return 0;

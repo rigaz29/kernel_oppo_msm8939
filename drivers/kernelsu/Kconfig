@@ -134,7 +134,7 @@ endmenu
 
 menu "KernelSU - SUSFS"
 # Only the features already ported to this 3.10 tree are exposed here. The
-# rest (sus_path, open_redirect, symbol hiding)
+# rest (open_redirect, symbol hiding)
 # need VFS hooks that are not in yet; they get their option when ported.
 
 config KSU_SUSFS
@@ -190,5 +190,14 @@ config KSU_SUSFS_SUS_MAP
 	help
 	  Hide VMAs and map_files entries of files marked with
 	  ksu_susfs add_sus_map for umounted app processes.
+
+config KSU_SUSFS_SUS_PATH
+	bool "Enable to hide files or directories"
+	depends on KSU_SUSFS
+	default y
+	help
+	  Hide files/directories marked with ksu_susfs add_sus_path from
+	  path lookups and readdir of umounted app processes, plus the
+	  /sdcard decryption fsnotify monitor.
 
 endmenu
