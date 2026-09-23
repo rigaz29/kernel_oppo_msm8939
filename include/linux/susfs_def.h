@@ -79,7 +79,14 @@
 
 #define VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT 0x80000000 /* used for mounts that are unshared by ksu process */
 
-#define TIF_PROC_UMOUNTED 33
+/* 3.10 port: this KernelSU fork (backslashxx) marks umounted processes with
+ * TIF_KSU_UNMOUNTABLE, defined in drivers/kernelsu/policy/app_profile.h.
+ * Keep these values in sync with that file. */
+#if defined(CONFIG_64BIT)
+#define TIF_PROC_UMOUNTED 61
+#else
+#define TIF_PROC_UMOUNTED 29
+#endif
 #define TIF_PROC_NO_SU 34
 #define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35
 

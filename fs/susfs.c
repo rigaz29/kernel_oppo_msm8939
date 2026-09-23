@@ -1365,13 +1365,27 @@ out_copy_to_user:
 	SUSFS_LOGI("CMD_SUSFS_SHOW_VERSION -> ret: %d\n", info.err);
 }
 
+#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_SUS_PATH)
+/* sus_mount needs this to detect early-boot KSU mounts before /sdcard/Android
+ * is accessible; the sdcard monitor (sus_path) disables it later. */
+DEFINE_STATIC_KEY_TRUE(susfs_is_sdcard_android_data_not_decrypted);
+#endif
+
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+/* KernelSU backslashxx: is_ksu_domain() compares the current task's SELinux
+ * SID against the cached su domain SID. */
+extern bool is_ksu_domain(void);
+bool susfs_is_current_ksu_domain(void) {
+	return is_ksu_domain();
+}
+#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 /* 3.10: sdcard monitor and extra works only serve sus_path and depend on
  * KernelSU internals (setup_selinux, ksu_cred) absent in this KSU fork. */
 /* kthread for checking if /sdcard/Android is accessible via fsnoitfy */
 /* code is straightly borrowed from KernelSU's pkg_observer.c */
 #define SDCARD_ANDROID_PATH "/data/media/0/Android"
-DEFINE_STATIC_KEY_TRUE(susfs_is_sdcard_android_data_not_decrypted);
 
 struct watch_dir {
 	const char *path;
