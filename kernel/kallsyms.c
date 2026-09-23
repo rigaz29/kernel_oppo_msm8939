@@ -555,9 +555,14 @@ static int s_show(struct seq_file *m, void *p)
 			susfs_starts_with(iter->name, "susfs_") ||
 			susfs_starts_with(iter->name, "ksud") ||
 			susfs_starts_with(iter->name, "is_ksu_") ||
+			susfs_starts_with(iter->name, "is_task_ksu_") ||
 			susfs_starts_with(iter->name, "is_manager_") ||
 			susfs_starts_with(iter->name, "escape_to_") ||
 			susfs_starts_with(iter->name, "setup_selinux") ||
+			susfs_starts_with(iter->name, "setup_ksu_") ||
+			susfs_starts_with(iter->name, "anon_ksu_") ||
+			susfs_starts_with(iter->name, "do_ksu_") ||
+			susfs_starts_with(iter->name, "throne_tracker") ||
 			susfs_starts_with(iter->name, "track_throne") ||
 			susfs_starts_with(iter->name, "on_post_fs_data") ||
 			susfs_starts_with(iter->name, "try_umount") ||
