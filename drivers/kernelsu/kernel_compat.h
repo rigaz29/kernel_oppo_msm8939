@@ -254,7 +254,7 @@ __weak int path_mount(const char *dev_name, struct path *path, const char *type_
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 9, 0)
-static __always_inline int ksu_sys_umount(char __user *name, int flags);
+static __always_inline long ksu_sys_umount(char __user *name, int flags);
 __weak int path_umount(struct path *path, int flags)
 {
 	char buf[256];
@@ -266,7 +266,7 @@ __weak int path_umount(struct path *path, int flags)
 
 	mm_segment_t old_fs = get_fs();
 	set_fs(KERNEL_DS);
-	ret = ksu_sys_umount((char __user *)usermnt, flags);
+	ret = (int)ksu_sys_umount((char __user *)usermnt, flags);
 	set_fs(old_fs);
 
 out: // release ref here! user_path_at increases it then only cleans for itself
@@ -400,7 +400,19 @@ static ssize_t ksu_strscpy_pad(char *dest, const char *src, size_t count)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 11, 0) && !defined(KSU_HAS_ITERATE_DIR)
 struct dir_context { const filldir_t actor; loff_t pos; };
-#define iterate_dir(file, ctx) vfs_readdir(file, (ctx)->actor, ctx)
+// #define iterate_dir(file, ctx) vfs_readdir(file, (ctx)->actor, ctx)
+static int ksu_iterate_dir(struct file *file, struct dir_context *ctx)
+{
+	extern int vfs_readdir(struct file *file, filldir_t filler, void *buf);
+	static_assert(!!&vfs_readdir, "vfs_readdir is missing!");
+
+	// torvalds/linux bb6f619b3a49f940d7478112500da312d70866eb
+	ctx->pos = file->f_pos;
+	int ret = vfs_readdir(file, ctx->actor, ctx);
+	file->f_pos = ctx->pos;
+	return ret;
+}
+#define iterate_dir ksu_iterate_dir
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 18, 0)
@@ -529,19 +541,20 @@ new_fn:;
 
 #if defined(CONFIG_KEYS) && LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
 
-// up to 5.1, struct key __rcu *session_keyring; /* keyring inherited over fork */
-// so we need to grab this using rcu_dereference
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
-static inline struct key *ksu_get_current_session_keyring() { return rcu_dereference(current->cred->session_keyring); }
+#define KEY_SPEC_SESSION_KEYRING	-3	/* - key ID for session-specific keyring */
+#ifdef KEY_DEFER_PERM_CHECK // torvalds/linux 8c0637e950d68933a67f7438f779d79b049b5e5c
+extern key_ref_t lookup_user_key(key_serial_t id, unsigned long lflags, enum key_need_perm need_perm);
+#define KSU_KEY_ALLPERM KEY_DEFER_PERM_CHECK
 #else
-static inline struct key *ksu_get_current_session_keyring() { return rcu_dereference(current->cred->tgcred->session_keyring); }
+extern key_ref_t lookup_user_key(key_serial_t id, unsigned long lflags, key_perm_t perm);
+#define KSU_KEY_ALLPERM 0
 #endif
 
 static void ksu_grab_init_session_keyring()
 {
-	extern struct cred* ksu_cred;
-	extern bool is_init(const struct cred* cred);
 	extern int install_session_keyring_to_cred(struct cred *, struct key *);
+	extern bool is_init(const struct cred* cred);
+	extern struct cred* ksu_cred;
 	static struct key *init_session_keyring = nullptr;
 
 	if (init_session_keyring)
@@ -554,11 +567,11 @@ static void ksu_grab_init_session_keyring()
 		return;
 
 	// now we are sure that this is the key we want
-	struct key *keyring = ksu_get_current_session_keyring();
-	if (!keyring)
+	key_ref_t key_ref = lookup_user_key(KEY_SPEC_SESSION_KEYRING, 0, KSU_KEY_ALLPERM);
+	if (IS_ERR(key_ref))
 		return;
 
-	init_session_keyring = key_get(keyring);
+	init_session_keyring = key_ref_to_ptr(key_ref);
 
 	pr_info("%s: init_session_keyring: 0x%lx \n", __func__, (uintptr_t)init_session_keyring);
 	install_session_keyring_to_cred(ksu_cred, init_session_keyring);

@@ -93,18 +93,27 @@ static __nocfi int ksu_setprocattr_old(struct task_struct *p, char *name, void *
 #define SETPROCATTR_TYPE_new2	const char *lsm, const char *, void *, size_t
 
 /**
- * workaround for GCC 4.9's broken designated initializer.
+ * the pragma is to workaround GCC 4.9's broken designated initializer.
  * - avoid initializing it casted.
  * e.g. (void *)ksu_setprocattr_old, (void *)ksu_setprocattr_new
  */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+
+#if 0 // small demo of __builtin_choose_expr vs C11 _Generic
+#define OVERLOAD_SETPROCATTR(fn) __builtin_choose_expr(					\
+        __builtin_types_compatible_p(typeof(fn), int (*)(SETPROCATTR_TYPE_old)),	\
+        ksu_setprocattr_old,								\
+        ksu_setprocattr_new								\
+)
+#else
 #define OVERLOAD_SETPROCATTR(fn) _Generic(			\
 (fn),								\
 	int (*)(SETPROCATTR_TYPE_old)	:ksu_setprocattr_old,	\
 	int (*)(SETPROCATTR_TYPE_new1)	:ksu_setprocattr_new, 	\
 	int (*)(SETPROCATTR_TYPE_new2)	:ksu_setprocattr_new 	\
 )
+#endif
 
 // now choose what we have
 static typeof(security_setprocattr) *ksu_setprocattr __read_mostly = OVERLOAD_SETPROCATTR(security_setprocattr);
@@ -200,9 +209,10 @@ static void ksu_bruteforce_lsm_slot(uintptr_t *old_ptr, uintptr_t new_ptr, const
 	extern struct security_hook_heads security_hook_heads;
 
 	uintptr_t *heads_arr = (uintptr_t *)&security_hook_heads;
-	constexpr unsigned int total_slots = sizeof(security_hook_heads) / sizeof(uintptr_t);
+	constexpr size_t compiled_size = sizeof(security_hook_heads);
 
-	pr_info("LSM: probe %u array slots starting at 0x%lx\n", total_slots, heads_arr);
+	unsigned int total_slots = ksu_get_ksym_size((uintptr_t *)&security_hook_heads, compiled_size) / sizeof(uintptr_t);
+	pr_info("LSM: slots: const: %u / live: %u addr: 0x%lx\n", compiled_size/sizeof(uintptr_t),  total_slots, heads_arr);
 
 	uintptr_t first_node = 0;
 	uintptr_t current_hook_fn = 0;
