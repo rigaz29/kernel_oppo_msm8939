@@ -3219,28 +3219,31 @@ static struct file *path_openat(int dfd, struct filename *pathname,
 		put_link(nd, &link, cookie);
 	}
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
-	if (!error && dfd != -1 &&
-		SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(nd->path.dentry->d_inode))
+	// do_last() has already done terminate_walk(nd), nd->path is not ours
+	if (!error && dfd != -1 && (opened & FILE_OPENED) &&
+		SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(file_inode(file)))
 	{
-		fake_filename = susfs_open_redirect_spoof_do_sys_openat(nd->path.dentry->d_inode);
+		fake_filename = susfs_open_redirect_spoof_do_sys_openat(file_inode(file));
 		if (fake_filename && !IS_ERR(fake_filename)) {
 			// 3.10 has no set_nameidata()/restore_nameidata(), and
 			// do_last() opens the file during the walk (5.10 opens in
 			// do_open() after the loop), so release the first open and
 			// walk again from scratch on the redirected path.
-			terminate_walk(nd);
-			if (opened & FILE_OPENED) {
-				fput(file);
-				file = get_empty_filp();
-				if (IS_ERR(file)) {
-					error = PTR_ERR(file);
-					file = NULL;
-					putname(fake_filename);
-					fake_filename = NULL;
-					goto out;
-				}
-				file->f_flags = op->open_flag;
-				opened = 0;
+			fput(file);
+			file = get_empty_filp();
+			if (IS_ERR(file)) {
+				error = PTR_ERR(file);
+				file = NULL;
+				putname(fake_filename);
+				fake_filename = NULL;
+				goto out;
+			}
+			file->f_flags = op->open_flag;
+			opened = 0;
+			// path_init() resets nd->root without putting it
+			if (nd->root.mnt && !(nd->flags & LOOKUP_ROOT)) {
+				path_put(&nd->root);
+				nd->root.mnt = NULL;
 			}
 			if (base) {
 				fput(base);
