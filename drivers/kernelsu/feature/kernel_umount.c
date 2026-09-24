@@ -52,13 +52,6 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 	uid_t new_uid = ksu_get_uid_t(new->uid);
 	uid_t old_uid = ksu_get_uid_t(old->uid);
 
-	if (!ksu_kernel_umount_enabled)
-		return 0;
-
-	// if there isn't any module mounted, just ignore it!
-	if (!ksu_module_mounted)
-		return 0;
-
 	// There are 6 scenarios:
 	// 1. Normal app: zygote -> appuid
 	// 2. Isolated process forked from zygote: zygote -> isolated_process
@@ -83,10 +76,26 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 	}
 
 #if defined(CONFIG_KSU_HOSTSREDIRECT) || defined(CONFIG_KSU_SUSFS)
-	// susfs needs the mark too: sus_map and the fdinfo/mountstats spoofs
-	// for non-su processes rely on TIF_KSU_UNMOUNTABLE being set here.
+	// susfs needs the mark too: sus_path, sus_map and the fdinfo/mountstats
+	// spoofs rely on TIF_KSU_UNMOUNTABLE being set here. Like upstream,
+	// mark the process even when kernel umount is disabled.
 	set_thread_flag(TIF_KSU_UNMOUNTABLE);
 #endif
+#ifdef CONFIG_KSU_SUSFS_SUS_PATH
+	// defer the sus_path re-marking loop to a workqueue, upstream parity
+	// with ksu_handle_extra_susfs_work()
+	extern struct work_struct susfs_extra_works;
+	if (!work_pending(&susfs_extra_works))
+		schedule_work(&susfs_extra_works);
+#endif
+
+	if (!ksu_kernel_umount_enabled)
+		return 0;
+
+	// if there isn't any module mounted, just ignore it!
+	if (!ksu_module_mounted)
+		return 0;
+
 	// umount the target mnt
 	pr_info("handle umount for uid: %d, pid: %d\n", new_uid, current->pid);
 
@@ -99,14 +108,6 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
 		try_umount(entry->umountable, entry->flags);
 	}
 	up_read(&mount_list_lock);
-
-#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-	// defer the sus_path re-marking loop to a workqueue, upstream parity
-	// with ksu_handle_extra_susfs_work()
-	extern struct work_struct susfs_extra_works;
-	if (!work_pending(&susfs_extra_works))
-		schedule_work(&susfs_extra_works);
-#endif
 
 	revert_creds(saved);
 
