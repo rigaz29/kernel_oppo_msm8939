@@ -77,16 +77,6 @@ static int do_report_event(void __user *arg)
 			post_fs_data_lock = true;
 			pr_info("post-fs-data triggered\n");
 			on_post_fs_data();
-			// backslashxx ksud never sends EVENT_MODULE_MOUNTED on its
-			// own (upstream tiann does after running module scripts; here
-			// it only exists as the manual 'ksud kernel
-			// notify-module-mounted' CLI). Module post-fs-data/post-mount
-			// scripts have run by the time zygote forks apps, so mark
-			// modules mounted here to keep kernel_umount and the susfs
-			// umounted-app spoofs working.
-			ksu_module_mounted = true;
-			on_module_mounted();
-			pr_info("module mounted! (implied by post-fs-data)\n");
 		}
 		break;
 	}
