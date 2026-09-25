@@ -134,7 +134,9 @@ static int mnt_alloc_group_id(struct mount *mnt)
 		res = ida_get_new_above(&mnt_group_ida,
 					DEFAULT_KSU_MNT_GROUP_ID,
 					&mnt->mnt_group_id);
-		goto bypass_orig_flow;
+		// - Do not advance mnt_group_start for the ksu range, otherwise the
+		//   next normal peer group id jumps past DEFAULT_KSU_MNT_GROUP_ID.
+		return res;
 	}
 
 	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
@@ -142,7 +144,6 @@ static int mnt_alloc_group_id(struct mount *mnt)
 	res = ida_get_new_above(&mnt_group_ida,
 				mnt_group_start,
 				&mnt->mnt_group_id);
-bypass_orig_flow:
 #else
 	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
 		return -ENOMEM;
@@ -1082,6 +1083,12 @@ bypass_orig_flow:
 	mnt->mnt.mnt_flags = old->mnt.mnt_flags & ~(MNT_WRITE_HOLD|MNT_MARKED);
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	// - Never inherit the unshared marker from the source mount. It is only
+	//   valid for a mount whose mnt_id was borrowed, not allocated via ida;
+	//   if it leaks into an ida-allocated clone, mnt_free_id() skips
+	//   ida_remove() and the id is lost forever. Re-set it below only on the
+	//   ksu unshare path.
+	mnt->mnt.mnt_flags &= ~VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
 	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
 		if (susfs_is_current_ksu_domain() && (flag & CL_COPY_MNT_NS))
 			mnt->mnt.mnt_flags |= VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
