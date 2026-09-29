@@ -35,6 +35,8 @@ ui_print "*******************************************"
 ui_print "Brought to you by MOCHI (TG: @mochi_wwww)"
 ui_print "*******************************************"
 
-patch_cmdline androidboot.selinux androidboot.selinux=permissive
+# strip androidboot.selinux so init defaults to enforcing; to force permissive
+# for debugging use: patch_cmdline androidboot.selinux androidboot.selinux=permissive
+patch_cmdline androidboot.selinux ""
 
 write_boot;
