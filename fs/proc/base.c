@@ -88,6 +88,7 @@
 #include <linux/flex_array.h>
 #include <linux/posix-timers.h>
 #include <linux/qmp_sphinx_instrumentation.h>
+#include <linux/cpufreq_times.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -2758,6 +2759,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 	INF("cmdline",    S_IRUGO, proc_pid_cmdline),
 	ONE("stat",       S_IRUGO, proc_tgid_stat),
+#ifdef CONFIG_CPU_FREQ_TIMES
+	ONE("time_in_state", S_IRUGO, proc_time_in_state_show),
+#endif
 	ONE("statm",      S_IRUGO, proc_pid_statm),
 	REG("maps",       S_IRUGO, proc_pid_maps_operations),
 #ifdef CONFIG_NUMA
@@ -3156,6 +3160,9 @@ static const struct pid_entry tid_base_stuff[] = {
 #endif
 	INF("cmdline",   S_IRUGO, proc_pid_cmdline),
 	ONE("stat",      S_IRUGO, proc_tid_stat),
+#ifdef CONFIG_CPU_FREQ_TIMES
+	ONE("time_in_state", S_IRUGO, proc_time_in_state_show),
+#endif
 	ONE("statm",     S_IRUGO, proc_pid_statm),
 	REG("maps",      S_IRUGO, proc_tid_maps_operations),
 #ifdef CONFIG_CHECKPOINT_RESTORE

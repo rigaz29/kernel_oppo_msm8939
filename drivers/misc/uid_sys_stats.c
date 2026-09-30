@@ -27,6 +27,7 @@
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/cpufreq_times.h>
 
 #define UID_HASH_BITS	10
 DECLARE_HASHTABLE(hash_table, UID_HASH_BITS);
@@ -209,13 +210,8 @@ static ssize_t uid_remove_write(struct file *file,
 	uid_start = start;
 	uid_end = end;
 
-	/* A37: panggilan cpufreq_task_stats_remove_uids() DIBUANG. Di pohon
-	 * asalnya remove_uid_range juga membersihkan /proc/uid_time_in_state,
-	 * tapi antarmuka itu butuh drivers/cpufreq/cpufreq_times.c yang tidak
-	 * ada di kernel ini -- dan tidak ada juga di a6010, sumber backport ini.
-	 * Menstubkannya hanya akan menyembunyikan bahwa uid_time_in_state
-	 * memang belum ada. Kalau suatu saat di-port, panggilan ini kembali.
-	 */
+	/* Also remove uids from /proc/uid_time_in_state */
+	cpufreq_task_times_remove_uids(uid_start, uid_end);
 
 	rt_mutex_lock(&uid_lock);
 
