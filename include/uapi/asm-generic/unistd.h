@@ -718,9 +718,16 @@ __SYSCALL(__NR_memfd_create, sys_memfd_create)
  */
 #define __NR_bpf 280
 __SYSCALL(__NR_bpf, sys_bpf)
+/*
+ * A37: pidfd_* memakai nomor upstream yang seragam untuk semua arsitektur
+ * (424 dan 434), sama dengan bionic. Nomor di antaranya tetap ENOSYS.
+ * a6010 menaruhnya di 282/283, yang di arm64 adalah userfaultfd/membarrier.
+ */
+#define __NR_pidfd_send_signal 424
+__SYSCALL(__NR_pidfd_send_signal, sys_pidfd_send_signal)
 
 #undef __NR_syscalls
-#define __NR_syscalls 281
+#define __NR_syscalls 425
 
 /*
  * All syscalls below here should go away really,

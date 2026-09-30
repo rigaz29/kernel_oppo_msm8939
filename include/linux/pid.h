@@ -80,6 +80,12 @@ static inline struct pid *get_pid(struct pid *pid)
 }
 
 extern void put_pid(struct pid *pid);
+
+struct file;
+struct file_operations;
+
+extern const struct file_operations pidfd_fops;
+extern struct pid *pidfd_pid(const struct file *file);
 extern struct task_struct *pid_task(struct pid *pid, enum pid_type);
 extern struct task_struct *get_pid_task(struct pid *pid, enum pid_type);
 
