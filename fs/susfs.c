@@ -331,8 +331,10 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 			err = -ENOENT;
 			goto out_path_put_path;
 		}
-		if (is_update)
+		if (is_update) {
 			new_entry->info.spoofed_size = d_backing_inode(path.dentry)->i_size;
+			new_entry->info.spoofed_blocks = d_backing_inode(path.dentry)->i_blocks;
+		}
 
 		new_entry->is_fuse = true;
 		new_entry->target_dev = fi->inode.i_sb->s_dev;
@@ -350,8 +352,10 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 		goto out_path_put_path;
 	}
 
-	if (is_update)
+	if (is_update) {
 		new_entry->info.spoofed_size = d_backing_inode(path.dentry)->i_size;
+		new_entry->info.spoofed_blocks = d_backing_inode(path.dentry)->i_blocks;
+	}
 
 	new_entry->is_fuse = false;
 	new_entry->target_dev = inode->i_sb->s_dev;
