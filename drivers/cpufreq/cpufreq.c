@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/syscore_ops.h>
 #include <linux/tick.h>
+#include <linux/cpufreq_times.h>
 #include <trace/events/power.h>
 
 /**
@@ -317,6 +318,7 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu)) {
 			policy->cur = freqs->new;
+			cpufreq_times_record_transition(policy, freqs->new);
 			sysfs_notify(&policy->kobj, NULL, "scaling_cur_freq");
 		}
 		break;
@@ -1135,6 +1137,7 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif,
 		ret = cpufreq_add_dev_interface(policy, dev);
 		if (ret)
 			goto err_out_unregister;
+		cpufreq_times_create_policy(policy);
 		blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 				CPUFREQ_CREATE_POLICY, policy);
 	}
