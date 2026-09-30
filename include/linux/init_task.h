@@ -76,6 +76,7 @@ extern struct group_info init_groups;
 		{ .first = NULL },					\
 		{ .first = NULL },					\
 	},								\
+	.wait_pidfd	= __WAIT_QUEUE_HEAD_INITIALIZER(init_struct_pid.wait_pidfd), \
 	.level		= 0,						\
 	.numbers	= { {						\
 		.nr		= 0,					\
