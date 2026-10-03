@@ -360,5 +360,10 @@ bool is_manager_apk(char *path)
 	if (check_v2_signature(path, 0x375, "484fcba6e6c43b1fb09700633bf2fb4758f13cb0b2f4457b80d075084b26c588"))
 		return true;
 
+	// A37 local manager key, not package-locked so the manager may be
+	// built under any applicationId (spoofed build)
+	if (check_v2_signature(path, 0x339, "9220865a436ffcf2bdc984bcbf0e71135e21334e2a7936cee36337af1e67d0f5"))
+		return true;
+
 	return false;
 }
