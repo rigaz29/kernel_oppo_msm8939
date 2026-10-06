@@ -14,7 +14,11 @@ $(info -- MDIR: $(MDIR))
 # compliant to last upstream kernel change as of 6b5f55b
 CFLAGS_ksu.o += -DKSU_VERSION=32664
 
-KSU_PACKAGE_NAME := me.weishu.kernelsu
+# A37 spoofed build: 32664's throne_tracker only signature-checks a dir whose
+# package name equals KSU_PACKAGE_NAME (or kowx712), so our random applicationId
+# must be set here or the manager is never crowned. is_manager_apk still gates by
+# our own cert. Keep this in sync with work/ksu-manager-key/package-name.txt.
+KSU_PACKAGE_NAME := kkotwy.xjkmck.tlevjp
 KSU_EXPECTED_SIZE := 0x033b
 KSU_EXPECTED_HASH := c371061b19d8c7d7d6133c6a9bafe198fa944e50c1b31c9d8daa8d7f1fc2d2d6
 
