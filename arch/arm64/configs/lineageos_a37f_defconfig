@@ -863,13 +863,13 @@ CONFIG_ASYMMETRIC_PUBLIC_KEY_SUBTYPE=y
 CONFIG_PUBLIC_KEY_ALGO_RSA=y
 CONFIG_X509_CERTIFICATE_PARSER=y
 CONFIG_ARM64_CRYPTO=y
-CONFIG_CRYPTO_SHA1_ARM64_CE=y
-CONFIG_CRYPTO_SHA2_ARM64_CE=y
-CONFIG_CRYPTO_GHASH_ARM64_CE=y
-CONFIG_CRYPTO_AES_ARM64_CE=y
-CONFIG_CRYPTO_AES_ARM64_CE_CCM=y
-CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
+# Driver *_ARM64_CE (AES/SHA1/SHA2/GHASH) dibuang: CPU ini tidak punya ARMv8
+# Crypto Extensions, jadi driver itu tidak pernah terdaftar di /proc/crypto.
 CONFIG_CRYPTO_AES_ARM64_NEON_BLK=y
+# Instruksi CRC32 ADA ("crc32" di /proc/cpuinfo). Checksum f2fs ("crc32") dan
+# ext4/jbd2 ("crc32c") lewat crypto API memakai versi hardware ini, bukan
+# crc32-table / crc32c-generic.
+CONFIG_CRYPTO_CRC32_ARM64=y
 CONFIG_QMI_ENCDEC=y
 
 # CATATAN: blok komentar soal Image-dtb / penempelan DTB DIBUANG di sini.
