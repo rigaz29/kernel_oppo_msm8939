@@ -9,6 +9,12 @@
 #ifndef __LZ4_FREESTANDING_LIMITS_H__
 #define __LZ4_FREESTANDING_LIMITS_H__
 
-#include <linux/limits.h>
+#include <linux/kernel.h>	/* INT_MAX, UINT_MAX live here on 3.10 */
+
+/* 3.10 builds gnu89, so lz4.c takes its C90 path, which checks UINT_MAX
+ * in #if.  The kernel's (~0U) is 64-bit to the preprocessor.
+ */
+#undef UINT_MAX
+#define UINT_MAX 4294967295U
 
 #endif
