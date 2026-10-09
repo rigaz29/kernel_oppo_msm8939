@@ -12,10 +12,16 @@
 #ifndef __LZ4_DEPS_H__
 #define __LZ4_DEPS_H__
 
-#include <linux/build_bug.h>	/* static_assert */
+#include <linux/bug.h>
 #include <linux/compiler.h>	/* __maybe_unused */
 #include <linux/string.h>
 #include <linux/types.h>
+
+/* 3.10 has no static_assert(); this is the 5.1 <linux/build_bug.h> one. */
+#ifndef static_assert
+#define static_assert(expr, ...) __static_assert(expr, ##__VA_ARGS__, #expr)
+#define __static_assert(expr, msg, ...) _Static_assert(expr, msg)
+#endif
 
 /* lz4.c uses "current" as a local; <asm/current.h> breaks the build. */
 #undef current
