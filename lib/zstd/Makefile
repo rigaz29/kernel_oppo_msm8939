@@ -8,6 +8,11 @@
 # in the COPYING file in the root directory of this source tree).
 # You may select, at your option, one of the above-listed licenses.
 # ################################################################
+# 3.10: zstd_compat.h fills in what the v7.2 sources expect from newer
+# kernels. The imported code mixes declarations and statements.
+ccflags-y += -include $(srctree)/$(src)/zstd_compat.h
+ccflags-y += -Wno-declaration-after-statement
+
 obj-$(CONFIG_ZSTD_COMPRESS) += zstd_compress.o
 obj-$(CONFIG_ZSTD_DECOMPRESS) += zstd_decompress.o
 obj-$(CONFIG_ZSTD_COMMON) += zstd_common.o
