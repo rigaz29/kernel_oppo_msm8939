@@ -294,7 +294,7 @@ void f2fs_set_link(struct inode *dir, struct f2fs_dir_entry *de,
 {
 	enum page_type type = f2fs_has_inline_dentry(dir) ? NODE : DATA;
 	lock_page(page);
-	f2fs_wait_on_page_writeback(page, type, true);
+	f2fs_wait_on_page_writeback(page, type, true, true);
 	de->ino = cpu_to_le32(inode->i_ino);
 	set_de_type(de, inode->i_mode);
 	set_page_dirty(page);
@@ -308,7 +308,7 @@ static void init_dent_inode(const struct qstr *name, struct page *ipage)
 {
 	struct f2fs_inode *ri;
 
-	f2fs_wait_on_page_writeback(ipage, NODE, true);
+	f2fs_wait_on_page_writeback(ipage, NODE, true, true);
 
 	/* copy name info. to this inode page */
 	ri = F2FS_INODE(ipage);
@@ -551,7 +551,7 @@ start:
 	++level;
 	goto start;
 add_dentry:
-	f2fs_wait_on_page_writeback(dentry_page, DATA, true);
+	f2fs_wait_on_page_writeback(dentry_page, DATA, true, true);
 
 	if (inode) {
 		down_write(&F2FS_I(inode)->i_sem);
@@ -711,7 +711,7 @@ void f2fs_delete_entry(struct f2fs_dir_entry *dentry, struct page *page,
 		return f2fs_delete_inline_entry(dentry, page, dir, inode);
 
 	lock_page(page);
-	f2fs_wait_on_page_writeback(page, DATA, true);
+	f2fs_wait_on_page_writeback(page, DATA, true, true);
 
 	dentry_blk = page_address(page);
 	bit_pos = dentry - dentry_blk->dentry;
@@ -785,6 +785,7 @@ int f2fs_fill_dentries(struct file *file, void *dirent, filldir_t filldir,
 		struct fscrypt_str *fstr)
 {
 	unsigned int start_bit_pos = bit_pos;
+	unsigned int next_pos;
 	unsigned char d_type;
 	struct f2fs_dir_entry *de = NULL;
 	struct fscrypt_str de_name = FSTR_INIT(NULL, 0);
@@ -815,6 +816,17 @@ int f2fs_fill_dentries(struct file *file, void *dirent, filldir_t filldir,
 		de_name.name = d->filename[bit_pos];
 		de_name.len = le16_to_cpu(de->name_len);
 
+		/* check memory boundary before moving forward */
+		next_pos = bit_pos + GET_DENTRY_SLOTS(le16_to_cpu(de->name_len));
+		if (unlikely(next_pos > d->max)) {
+			f2fs_msg(sbi->sb, KERN_WARNING,
+				"%s: corrupted namelen=%d, run fsck to fix.",
+				__func__, le16_to_cpu(de->name_len));
+			set_sbi_flag(sbi, SBI_NEED_FSCK);
+			err = -EINVAL;
+			goto out;
+		}
+
 		if (f2fs_encrypted_inode(d->inode)) {
 			int save_len = fstr->len;
 
@@ -840,7 +852,7 @@ int f2fs_fill_dentries(struct file *file, void *dirent, filldir_t filldir,
 		if (readdir_ra)
 			f2fs_ra_node_page(sbi, le32_to_cpu(de->ino));
 
-		bit_pos += GET_DENTRY_SLOTS(le16_to_cpu(de->name_len));
+		bit_pos = next_pos;
 	}
 out:
 	if (readdir_ra)
