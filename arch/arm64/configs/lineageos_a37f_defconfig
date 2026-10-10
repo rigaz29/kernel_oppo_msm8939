@@ -619,6 +619,10 @@ CONFIG_PSTORE_PMSG=y
 CONFIG_PSTORE_RAM=y
 CONFIG_F2FS_FS=y
 CONFIG_F2FS_FS_SECURITY=y
+# Kompresi f2fs untuk recovery: TWRP harus bisa me-mount /data yang berflag
+# compression dan memformatnya (fstab fscompress + TW_ENABLE_FS_COMPRESSION).
+# LZO, LZ4 dan LZ4HC ikut default y; zstd tidak ada (lib/zstd belum diport).
+CONFIG_F2FS_FS_COMPRESSION=y
 # FBE (file-based encryption). fs/crypto/ di pohon ini adalah backport fscrypt
 # v1 -- tidak ada keyring.c maupun hkdf.c, jadi hanya FS_IOC_SET/GET_ENCRYPTION_
 # POLICY yang tersedia, bukan FS_IOC_ADD_ENCRYPTION_KEY. vold Android 16
