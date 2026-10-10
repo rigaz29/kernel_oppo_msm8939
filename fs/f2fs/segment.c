@@ -203,9 +203,6 @@ void f2fs_abort_atomic_write(struct inode *inode, bool clean)
 	if (!f2fs_is_atomic_file(inode))
 		return;
 
-	clear_inode_flag(fi->cow_inode, FI_COW_FILE);
-	iput(fi->cow_inode);
-	fi->cow_inode = NULL;
 	release_atomic_write_cnt(inode);
 	clear_inode_flag(inode, FI_ATOMIC_COMMITTED);
 	clear_inode_flag(inode, FI_ATOMIC_REPLACE);
@@ -279,19 +276,24 @@ static void __complete_revoke_list(struct inode *inode, struct list_head *head,
 					bool revoke)
 {
 	struct revoke_entry *cur, *tmp;
+	pgoff_t start_index = 0;
 	bool truncate = is_inode_flag_set(inode, FI_ATOMIC_REPLACE);
 
 	list_for_each_entry_safe(cur, tmp, head, list) {
-		if (revoke)
+		if (revoke) {
 			__replace_atomic_write_block(inode, cur->index,
 						cur->old_addr, NULL, true);
+		} else if (truncate) {
+			f2fs_truncate_hole(inode, start_index, cur->index);
+			start_index = cur->index + 1;
+		}
 
 		list_del(&cur->list);
 		kmem_cache_free(revoke_entry_slab, cur);
 	}
 
 	if (!revoke && truncate)
-		f2fs_do_truncate_blocks(inode, 0, false);
+		f2fs_do_truncate_blocks(inode, start_index * PAGE_SIZE, false);
 }
 
 static int __f2fs_commit_atomic_write(struct inode *inode)
@@ -2730,30 +2732,10 @@ static int __next_free_blkoff(struct f2fs_sb_info *sbi,
 	return __find_rev_next_zero_bit(target_map, sbi->blocks_per_seg, start);
 }
 
-/*
- * If a segment is written by LFS manner, next block offset is just obtained
- * by increasing the current block offset. However, if a segment is written by
- * SSR manner, next block offset obtained by calling __next_free_blkoff
- */
-static void __refresh_next_blkoff(struct f2fs_sb_info *sbi,
-				struct curseg_info *seg)
+static int f2fs_find_next_ssr_block(struct f2fs_sb_info *sbi,
+		struct curseg_info *seg)
 {
-	if (seg->alloc_type == SSR) {
-		seg->next_blkoff =
-			__next_free_blkoff(sbi, seg->segno,
-						seg->next_blkoff + 1);
-	} else {
-		seg->next_blkoff++;
-		if (F2FS_OPTION(sbi).fs_mode == FS_MODE_FRAGMENT_BLK) {
-			/* To allocate block chunks in different sizes, use random number */
-			if (--seg->fragment_remained_chunk <= 0) {
-				seg->fragment_remained_chunk =
-				   prandom_u32() % sbi->max_fragment_chunk + 1;
-				seg->next_blkoff +=
-				   prandom_u32() % sbi->max_fragment_hole + 1;
-			}
-		}
-	}
+	return __next_free_blkoff(sbi, seg->segno, seg->next_blkoff + 1);
 }
 
 bool f2fs_segment_has_free_slot(struct f2fs_sb_info *sbi, int segno)
@@ -3023,17 +3005,11 @@ static void __allocate_new_segment(struct f2fs_sb_info *sbi, int type,
 	locate_dirty_segment(sbi, old_segno);
 }
 
-static void __allocate_new_section(struct f2fs_sb_info *sbi,
-						int type, bool force)
-{
-	__allocate_new_segment(sbi, type, true, force);
-}
-
 void f2fs_allocate_new_section(struct f2fs_sb_info *sbi, int type, bool force)
 {
 	f2fs_down_read(&SM_I(sbi)->curseg_lock);
 	down_write(&SIT_I(sbi)->sentry_lock);
-	__allocate_new_section(sbi, type, force);
+	__allocate_new_segment(sbi, type, true, force);
 	up_write(&SIT_I(sbi)->sentry_lock);
 	f2fs_up_read(&SM_I(sbi)->curseg_lock);
 }
@@ -3211,13 +3187,6 @@ out:
 	return err;
 }
 
-static bool __has_curseg_space(struct f2fs_sb_info *sbi,
-					struct curseg_info *curseg)
-{
-	return curseg->next_blkoff < f2fs_usable_blks_in_seg(sbi,
-							curseg->segno);
-}
-
 int f2fs_rw_hint_to_seg_type(enum rw_hint hint)
 {
 	switch (hint) {
@@ -3337,6 +3306,19 @@ static int __get_segment_type(struct f2fs_io_info *fio)
 	return type;
 }
 
+static void f2fs_randomize_chunk(struct f2fs_sb_info *sbi,
+		struct curseg_info *seg)
+{
+	/* To allocate block chunks in different sizes, use random number */
+	if (--seg->fragment_remained_chunk > 0)
+		return;
+
+	seg->fragment_remained_chunk =
+		prandom_u32() % sbi->max_fragment_chunk + 1;
+	seg->next_blkoff +=
+		prandom_u32() % sbi->max_fragment_hole + 1;
+}
+
 void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		block_t old_blkaddr, block_t *new_blkaddr,
 		struct f2fs_summary *sum, int type,
@@ -3347,6 +3329,7 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	unsigned long long old_mtime;
 	bool from_gc = (type == CURSEG_ALL_DATA_ATGC);
 	struct seg_entry *se = NULL;
+	bool segment_full = false;
 
 	f2fs_down_read(&SM_I(sbi)->curseg_lock);
 
@@ -3366,8 +3349,15 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	f2fs_wait_discard_bio(sbi, *new_blkaddr);
 
 	curseg->sum_blk->entries[curseg->next_blkoff] = *sum;
-	__refresh_next_blkoff(sbi, curseg);
-
+	if (curseg->alloc_type == SSR) {
+		curseg->next_blkoff = f2fs_find_next_ssr_block(sbi, curseg);
+	} else {
+		curseg->next_blkoff++;
+		if (F2FS_OPTION(sbi).fs_mode == FS_MODE_FRAGMENT_BLK)
+			f2fs_randomize_chunk(sbi, curseg);
+	}
+	if (curseg->next_blkoff >= f2fs_usable_blks_in_seg(sbi, curseg->segno))
+		segment_full = true;
 	stat_inc_block_count(sbi, curseg);
 
 	if (from_gc) {
@@ -3386,10 +3376,11 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 	if (GET_SEGNO(sbi, old_blkaddr) != NULL_SEGNO)
 		update_sit_entry(sbi, old_blkaddr, -1);
 
-	if (!__has_curseg_space(sbi, curseg)) {
-		/*
-		 * Flush out current segment and replace it with new segment.
-		 */
+	/*
+	 * If the current segment is full, flush it out and replace it with a
+	 * new segment.
+	 */
+	if (segment_full) {
 		if (from_gc) {
 			get_atssr_segment(sbi, type, se->type,
 						AT_SSR, se->mtime);
@@ -3424,10 +3415,10 @@ void f2fs_allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 		struct f2fs_bio_info *io;
 
 		if (F2FS_IO_ALIGNED(sbi))
-			fio->retry = false;
+			fio->retry = 0;
 
 		INIT_LIST_HEAD(&fio->list);
-		fio->in_list = true;
+		fio->in_list = 1;
 		io = sbi->write_io[fio->type] + fio->temp;
 		spin_lock(&io->io_lock);
 		list_add_tail(&fio->list, &io->io_list);
@@ -3508,7 +3499,7 @@ void f2fs_do_write_meta_page(struct f2fs_sb_info *sbi, struct page *page,
 		.new_blkaddr = page->index,
 		.page = page,
 		.encrypted_page = NULL,
-		.in_list = false,
+		.in_list = 0,
 	};
 
 	if (unlikely(page->index >= MAIN_BLKADDR(sbi)))
@@ -3724,7 +3715,7 @@ void f2fs_wait_on_page_writeback(struct page *page,
 
 		/* submit cached LFS IO */
 		f2fs_submit_merged_write_cond(sbi, NULL, page, 0, type);
-		/* sbumit cached IPU IO */
+		/* submit cached IPU IO */
 		f2fs_submit_merged_ipu_write(sbi, NULL, page);
 		if (ordered) {
 			wait_on_page_writeback(page);
