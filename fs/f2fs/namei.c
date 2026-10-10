@@ -84,8 +84,6 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 	if (test_opt(sbi, INLINE_XATTR))
 		set_inode_flag(inode, FI_INLINE_XATTR);
 
-	if (test_opt(sbi, INLINE_DATA) && f2fs_may_inline_data(inode))
-		set_inode_flag(inode, FI_INLINE_DATA);
 	if (f2fs_may_inline_dentry(inode))
 		set_inode_flag(inode, FI_INLINE_DENTRY);
 
@@ -102,10 +100,6 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 
 	f2fs_init_extent_tree(inode, NULL);
 
-	stat_inc_inline_xattr(inode);
-	stat_inc_inline_inode(inode);
-	stat_inc_inline_dir(inode);
-
 	F2FS_I(inode)->i_flags =
 		f2fs_mask_flags(mode, F2FS_I(dir)->i_flags & F2FS_FL_INHERITED);
 
@@ -121,6 +115,14 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 					f2fs_may_compress(inode))
 			set_compress_context(inode);
 	}
+
+	/* Should enable inline_data after compression set */
+	if (test_opt(sbi, INLINE_DATA) && f2fs_may_inline_data(inode))
+		set_inode_flag(inode, FI_INLINE_DATA);
+
+	stat_inc_inline_xattr(inode);
+	stat_inc_inline_inode(inode);
+	stat_inc_inline_dir(inode);
 
 	f2fs_set_inode_flags(inode);
 
@@ -320,6 +322,9 @@ static void set_compress_inode(struct f2fs_sb_info *sbi, struct inode *inode,
 		if (!is_extension_exist(name, ext[i], false))
 			continue;
 
+		/* Do not use inline_data with compression */
+		stat_dec_inline_inode(inode);
+		clear_inode_flag(inode, FI_INLINE_DATA);
 		set_compress_context(inode);
 		return;
 	}
@@ -787,9 +792,12 @@ out:
 	return err;
 }
 
-#if 0
-static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
-					umode_t mode, struct inode **whiteout)
+/*
+ * 3.10 has neither ->tmpfile nor whiteouts, so the only unlinked inode
+ * made here is the one the atomic write path keeps its COW data in.
+ */
+static int __f2fs_tmpfile(struct inode *dir, umode_t mode,
+			  struct inode **new_inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;
@@ -803,14 +811,9 @@ static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
-	if (whiteout) {
-		init_special_inode(inode, inode->i_mode, WHITEOUT_DEV);
-		inode->i_op = &f2fs_special_inode_operations;
-	} else {
-		inode->i_op = &f2fs_file_inode_operations;
-		inode->i_fop = &f2fs_file_operations;
-		inode->i_mapping->a_ops = &f2fs_dblock_aops;
-	}
+	inode->i_op = &f2fs_file_inode_operations;
+	inode->i_fop = &f2fs_file_operations;
+	inode->i_mapping->a_ops = &f2fs_dblock_aops;
 
 	f2fs_lock_op(sbi);
 	err = f2fs_acquire_orphan_inode(sbi);
@@ -828,20 +831,11 @@ static int __f2fs_tmpfile(struct inode *dir, struct dentry *dentry,
 	f2fs_add_orphan_inode(inode);
 	f2fs_alloc_nid_done(sbi, inode->i_ino);
 
-	if (whiteout) {
-		f2fs_i_links_write(inode, false);
-
-		spin_lock(&inode->i_lock);
-		inode->i_state |= I_LINKABLE;
-		spin_unlock(&inode->i_lock);
-
-		*whiteout = inode;
-	} else {
-		d_tmpfile(dentry, inode);
-	}
-	/* link_count was changed by d_tmpfile as well. */
+	f2fs_i_links_write(inode, false);
 	f2fs_unlock_op(sbi);
 	unlock_new_inode(inode);
+
+	*new_inode = inode;
 
 	f2fs_balance_fs(sbi, true);
 	return 0;
@@ -853,26 +847,11 @@ out:
 	return err;
 }
 
-static int f2fs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
+int f2fs_get_tmpfile(struct inode *dir,
+		     struct inode **new_inode)
 {
-	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
-
-	if (unlikely(f2fs_cp_error(sbi)))
-		return -EIO;
-	if (!f2fs_is_checkpoint_ready(sbi))
-		return -ENOSPC;
-
-	return __f2fs_tmpfile(dir, dentry, mode, NULL);
+	return __f2fs_tmpfile(dir, S_IFREG, new_inode);
 }
-
-static int f2fs_create_whiteout(struct inode *dir, struct inode **whiteout)
-{
-	if (unlikely(f2fs_cp_error(F2FS_I_SB(dir))))
-		return -EIO;
-
-	return __f2fs_tmpfile(dir, NULL, S_IFCHR | WHITEOUT_MODE, whiteout);
-}
-#endif
 
 static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			struct inode *new_dir, struct dentry *new_dentry)
