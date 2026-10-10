@@ -827,7 +827,7 @@ static int __f2fs_tmpfile(struct inode *dir, umode_t mode,
 	if (err)
 		goto out;
 
-	err = f2fs_do_tmpfile(inode, dir);
+	err = f2fs_do_tmpfile(inode, dir, NULL);
 	if (err)
 		goto release_out;
 
