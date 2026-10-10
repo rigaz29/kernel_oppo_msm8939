@@ -212,6 +212,7 @@ enum {
 	FAULT_SLAB_ALLOC,
 	FAULT_DQUOT_INIT,
 	FAULT_LOCK_OP,
+	FAULT_BLKADDR,
 	FAULT_MAX,
 };
 
@@ -601,6 +602,8 @@ struct discard_entry {
 
 /* default discard granularity of inner discard thread, unit: block count */
 #define DEFAULT_DISCARD_GRANULARITY		16
+/* default maximum discard granularity of ordered discard, unit: block count */
+#define DEFAULT_MAX_ORDERED_DISCARD_GRANULARITY	16
 
 /* max discard pend list number */
 #define MAX_PLIST_NUM		512
@@ -680,6 +683,7 @@ struct discard_cmd_control {
 	unsigned int mid_discard_issue_time;	/* mid. interval between discard issue */
 	unsigned int max_discard_issue_time;	/* max. interval between discard issue */
 	unsigned int discard_granularity;	/* discard granularity */
+	unsigned int max_ordered_discard;	/* maximum discard granularity issued by lba order */
 	unsigned int undiscard_blks;		/* # of undiscard blocks */
 	unsigned int next_pos;			/* next discard position */
 	atomic_t issued_discard;		/* # of issued discard */
@@ -1332,9 +1336,6 @@ struct f2fs_sm_info {
 	/* a threshold to reclaim prefree segments */
 	unsigned int rec_prefree_segments;
 
-	/* for batched trimming */
-	unsigned int trim_sections;		/* # of sections to trim */
-
 	struct list_head sit_entry_set;	/* sit entry set list */
 
 	unsigned int ipu_policy;	/* in-place-update policy */
@@ -1583,6 +1584,7 @@ enum {
 	MAX_TIME,
 };
 
+/* Note that you need to keep synchronization with this gc_mode_names array */
 enum {
 	GC_NORMAL,
 	GC_IDLE_CB,
@@ -2005,8 +2007,9 @@ struct f2fs_sb_info {
 	unsigned int cur_victim_sec;		/* current victim section num */
 	unsigned int gc_mode;			/* current GC state */
 	unsigned int next_victim_seg[2];	/* next segment in victim section */
-	spinlock_t gc_urgent_high_lock;
-	unsigned int gc_urgent_high_remaining;	/* remaining trial count for GC_URGENT_HIGH */
+	spinlock_t gc_remaining_trials_lock;
+	/* remaining trial count for GC_URGENT_* and GC_IDLE_* */
+	unsigned int gc_remaining_trials;
 
 	/* for skip statistic */
 	unsigned long long skipped_gc_rwsem;		/* FG_GC only */
