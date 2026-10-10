@@ -913,11 +913,12 @@ skip:
 			(loff_t)MAIN_BLKADDR(sbi) << PAGE_SHIFT, -1);
 
 	if (err) {
-		truncate_inode_pages(NODE_MAPPING(sbi), 0);
-		truncate_inode_pages(META_MAPPING(sbi), 0);
-	} else {
-		clear_sbi_flag(sbi, SBI_POR_DOING);
+		truncate_inode_pages_final(NODE_MAPPING(sbi));
+		truncate_inode_pages_final(META_MAPPING(sbi));
 	}
+
+	if (!err)
+		clear_sbi_flag(sbi, SBI_POR_DOING);
 	f2fs_up_write(&sbi->cp_global_sem);
 
 	/* let's drop all the directory inodes for clean checkpoint */
