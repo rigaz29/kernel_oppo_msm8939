@@ -416,7 +416,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	struct dentry *new;
 	nid_t ino = -1;
 	int err = 0;
-	struct fscrypt_name fname;
+	struct f2fs_filename fname;
 
 	trace_f2fs_lookup_start(dir, dentry, flags);
 
@@ -425,19 +425,20 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		goto out;
 	}
 
-	err = fscrypt_prepare_lookup(dir, dentry, &fname);
+	err = f2fs_prepare_lookup(dir, dentry, &fname);
 	if (err == -ENOENT)
 		goto out_splice;
 	if (err)
 		goto out;
 	de = __f2fs_find_entry(dir, &fname, &page);
-	fscrypt_free_filename(&fname);
+	f2fs_free_filename(&fname);
 
 	if (!de) {
 		if (IS_ERR(page)) {
 			err = PTR_ERR(page);
 			goto out;
 		}
+		err = -ENOENT;
 		goto out_splice;
 	}
 
@@ -450,7 +451,7 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 		goto out;
 	}
 
-	if (f2fs_encrypted_inode(dir) &&
+	if (IS_ENCRYPTED(dir) &&
 	    (S_ISDIR(inode->i_mode) || S_ISLNK(inode->i_mode)) &&
 	    !fscrypt_has_permitted_context(dir, inode)) {
 		f2fs_warn(F2FS_I_SB(inode), "Inconsistent encryption contexts: %lu/%lu",
@@ -471,9 +472,8 @@ out_splice:
 	}
 #endif
 	new = d_splice_alias(inode, dentry);
-	if (IS_ERR(new))
-		err = PTR_ERR(new);
-	trace_f2fs_lookup_end(dir, dentry, ino, err);
+	err = PTR_ERR_OR_ZERO(new);
+	trace_f2fs_lookup_end(dir, dentry, ino, !new ? -ENOENT : err);
 	return new;
 out_iput:
 	iput(inode);
@@ -488,7 +488,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	struct inode *inode = d_inode(dentry);
 	struct f2fs_dir_entry *de;
 	struct page *page;
-	int err = -ENOENT;
+	int err;
 
 	trace_f2fs_unlink_enter(dir, dentry);
 
