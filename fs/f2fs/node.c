@@ -105,10 +105,6 @@ bool f2fs_available_free_memory(struct f2fs_sb_info *sbi, int type)
 				atomic_read(&sbi->total_ext_node) *
 				sizeof(struct extent_node)) >> PAGE_SHIFT;
 		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 1);
-	} else if (type == INMEM_PAGES) {
-		/* it allows 20% / total_ram for inmemory pages */
-		mem_size = get_pages(sbi, F2FS_INMEM_PAGES);
-		res = mem_size < (val.totalram / 5);
 	} else if (type == DISCARD_CACHE) {
 		mem_size = (atomic_read(&dcc->discard_cmd_cnt) *
 				sizeof(struct discard_cmd)) >> PAGE_SHIFT;
@@ -1498,8 +1494,6 @@ repeat:
 		goto out_err;
 	}
 page_hit:
-	mark_page_accessed(page);
-
 	if (likely(nid == nid_of_node(page)))
 		return page;
 
@@ -1512,7 +1506,7 @@ page_hit:
 out_err:
 	ClearPageUptodate(page);
 out_put_err:
-	/* ENOENT comes from read_node_page(), not an error. */
+	/* ENOENT comes from read_node_page which is not an error. */
 	if (err != -ENOENT)
 		f2fs_handle_page_eio(sbi, page->index, NODE);
 	f2fs_put_page(page, 1);
@@ -1696,7 +1690,7 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 		goto redirty_out;
 	}
 
-	if (atomic && !test_opt(sbi, NOBARRIER))
+	if (atomic && !test_opt(sbi, NOBARRIER) && !f2fs_sb_has_blkzoned(sbi))
 		fio.op_flags |= WRITE_FLUSH_FUA;
 
 	if (IS_INODE(page) && (atomic || is_fsync_dnode(page)))
@@ -2025,7 +2019,6 @@ next_step:
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
 			bool submitted = false;
-			bool may_dirty = true;
 
 			/* give a priority to WB_SYNC threads */
 			if (atomic_read(&sbi->wb_sync_req[NODE]) &&
@@ -2078,11 +2071,8 @@ continue_unlock:
 			}
 
 			/* flush dirty inode */
-			if (IS_INODE(page) && may_dirty) {
-				may_dirty = false;
-				if (flush_dirty_inode(page))
-					goto lock_node;
-			}
+			if (IS_INODE(page) && flush_dirty_inode(page))
+				goto lock_node;
 write_node:
 			f2fs_wait_on_page_writeback(page, NODE, true, true);
 

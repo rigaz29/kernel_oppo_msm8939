@@ -44,7 +44,9 @@ bool f2fs_sanity_check_inline_data(struct inode *inode)
 	 * used by sanity_check_inode(), when disk layout fields has not
 	 * been synchronized to inmem fields.
 	 */
-	return (S_ISREG(inode->i_mode) && file_is_encrypt(inode));
+	return (S_ISREG(inode->i_mode) &&
+		(file_is_encrypt(inode) || file_is_verity(inode) ||
+		(F2FS_I(inode)->i_flags & F2FS_COMPR_FL)));
 }
 
 bool f2fs_may_inline_dentry(struct inode *inode)
