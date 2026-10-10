@@ -767,6 +767,10 @@ CONFIG_PSTORE_PMSG=y
 CONFIG_PSTORE_RAM=y
 CONFIG_F2FS_FS=y
 CONFIG_F2FS_FS_SECURITY=y
+# Kompresi f2fs (LZO, LZ4, LZ4HC ikut default y; zstd tidak ada, lib/zstd
+# belum diport). Tanpa efek sampai /data diformat dengan -O compression dan
+# fstab ROM memakai fscompress / opsi mount compress_*.
+CONFIG_F2FS_FS_COMPRESSION=y
 # FBE (file-based encryption). fs/crypto/ di pohon ini adalah backport fscrypt
 # v1 -- tidak ada keyring.c maupun hkdf.c, jadi hanya FS_IOC_SET/GET_ENCRYPTION_
 # POLICY yang tersedia, bukan FS_IOC_ADD_ENCRYPTION_KEY. vold Android 16
