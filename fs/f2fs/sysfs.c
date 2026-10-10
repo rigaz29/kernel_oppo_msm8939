@@ -143,6 +143,12 @@ static ssize_t pending_discard_show(struct f2fs_attr *a,
 				&SM_I(sbi)->dcc_info->discard_cmd_cnt));
 }
 
+static ssize_t gc_mode_show(struct f2fs_attr *a,
+		struct f2fs_sb_info *sbi, char *buf)
+{
+	return sprintf(buf, "%s\n", gc_mode_names[sbi->gc_mode]);
+}
+
 static ssize_t features_show(struct f2fs_attr *a,
 		struct f2fs_sb_info *sbi, char *buf)
 {
@@ -340,10 +346,6 @@ static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 		return snprintf(buf, PAGE_SIZE, "%s\n",
 				gc_mode_names[sbi->gc_mode]);
 
-	if (!strcmp(a->attr.name, "gc_segment_mode"))
-		return snprintf(buf, PAGE_SIZE, "%s\n",
-				gc_mode_names[sbi->gc_segment_mode]);
-
 	if (!strcmp(a->attr.name, "gc_reclaimed_segments")) {
 		return snprintf(buf, PAGE_SIZE, "%u\n",
 			sbi->gc_reclaimed_segs[sbi->gc_segment_mode]);
@@ -491,13 +493,19 @@ out:
 		return count;
 	}
 
+	if (!strcmp(a->attr.name, "max_ordered_discard")) {
+		if (t == 0 || t > MAX_PLIST_NUM)
+			return -EINVAL;
+		if (!f2fs_block_unit_discard(sbi))
+			return -EINVAL;
+		*ui = t;
+		return count;
+	}
+
 	if (!strcmp(a->attr.name, "migration_granularity")) {
 		if (t == 0 || t > sbi->segs_per_sec)
 			return -EINVAL;
 	}
-
-	if (!strcmp(a->attr.name, "trim_sections"))
-		return -EINVAL;
 
 	if (!strcmp(a->attr.name, "gc_urgent")) {
 		if (t == 0) {
@@ -539,10 +547,10 @@ out:
 		return count;
 	}
 
-	if (!strcmp(a->attr.name, "gc_urgent_high_remaining")) {
-		spin_lock(&sbi->gc_urgent_high_lock);
-		sbi->gc_urgent_high_remaining = t;
-		spin_unlock(&sbi->gc_urgent_high_lock);
+	if (!strcmp(a->attr.name, "gc_remaining_trials")) {
+		spin_lock(&sbi->gc_remaining_trials_lock);
+		sbi->gc_remaining_trials = t;
+		spin_unlock(&sbi->gc_remaining_trials_lock);
 
 		return count;
 	}
@@ -789,8 +797,8 @@ F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, min_discard_issue_time, min_discard_
 F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, mid_discard_issue_time, mid_discard_issue_time);
 F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, max_discard_issue_time, max_discard_issue_time);
 F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, discard_granularity, discard_granularity);
+F2FS_RW_ATTR(DCC_INFO, discard_cmd_control, max_ordered_discard, max_ordered_discard);
 F2FS_RW_ATTR(RESERVED_BLOCKS, f2fs_sb_info, reserved_blocks, reserved_blocks);
-F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, batched_trim_sections, trim_sections);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, ipu_policy, ipu_policy);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, min_ipu_util, min_ipu_util);
 F2FS_RW_ATTR(SM_INFO, f2fs_sm_info, min_fsync_blocks, min_fsync_blocks);
@@ -825,7 +833,7 @@ F2FS_RW_ATTR(FAULT_INFO_TYPE, f2fs_fault_info, inject_type, inject_type);
 #endif
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, data_io_flag, data_io_flag);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, node_io_flag, node_io_flag);
-F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, gc_urgent_high_remaining, gc_urgent_high_remaining);
+F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, gc_remaining_trials, gc_remaining_trials);
 F2FS_RW_ATTR(CPRC_INFO, ckpt_req_control, ckpt_thread_ioprio, ckpt_thread_ioprio);
 F2FS_GENERAL_RO_ATTR(dirty_segments);
 F2FS_GENERAL_RO_ATTR(free_segments);
@@ -838,6 +846,7 @@ F2FS_GENERAL_RO_ATTR(encoding);
 F2FS_GENERAL_RO_ATTR(mounted_time_sec);
 F2FS_GENERAL_RO_ATTR(main_blkaddr);
 F2FS_GENERAL_RO_ATTR(pending_discard);
+F2FS_GENERAL_RO_ATTR(gc_mode);
 #ifdef CONFIG_F2FS_STAT_FS
 F2FS_STAT_ATTR(STAT_INFO, f2fs_stat_info, cp_foreground_calls, cp_count);
 F2FS_STAT_ATTR(STAT_INFO, f2fs_stat_info, cp_background_calls, bg_cp_count);
@@ -915,8 +924,9 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(mid_discard_issue_time),
 	ATTR_LIST(max_discard_issue_time),
 	ATTR_LIST(discard_granularity),
+	ATTR_LIST(max_ordered_discard),
 	ATTR_LIST(pending_discard),
-	ATTR_LIST(batched_trim_sections),
+	ATTR_LIST(gc_mode),
 	ATTR_LIST(ipu_policy),
 	ATTR_LIST(min_ipu_util),
 	ATTR_LIST(min_fsync_blocks),
@@ -949,7 +959,7 @@ static struct attribute *f2fs_attrs[] = {
 #endif
 	ATTR_LIST(data_io_flag),
 	ATTR_LIST(node_io_flag),
-	ATTR_LIST(gc_urgent_high_remaining),
+	ATTR_LIST(gc_remaining_trials),
 	ATTR_LIST(ckpt_thread_ioprio),
 	ATTR_LIST(dirty_segments),
 	ATTR_LIST(free_segments),
