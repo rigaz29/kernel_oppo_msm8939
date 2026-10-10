@@ -118,6 +118,8 @@ config F2FS_FS_LZO
 config F2FS_FS_LZORLE
 	bool "LZO-RLE compression support"
 	depends on F2FS_FS_LZO
+	# 3.10's lib/lzo has no lzo-rle, so the option stays hidden
+	depends on LZORLE_COMPRESS
 	default y
 	help
 	  Support LZO-RLE compress algorithm, if unsure, say Y.

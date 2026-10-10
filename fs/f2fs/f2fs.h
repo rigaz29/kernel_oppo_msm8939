@@ -307,34 +307,34 @@ extern const char *f2fs_fault_name[FAULT_MAX];
 /*
  * For mount options
  */
-#define F2FS_MOUNT_DISABLE_ROLL_FORWARD	0x00000002
-#define F2FS_MOUNT_DISCARD		0x00000004
-#define F2FS_MOUNT_NOHEAP		0x00000008
-#define F2FS_MOUNT_XATTR_USER		0x00000010
-#define F2FS_MOUNT_POSIX_ACL		0x00000020
-#define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000040
-#define F2FS_MOUNT_INLINE_XATTR		0x00000080
-#define F2FS_MOUNT_INLINE_DATA		0x00000100
-#define F2FS_MOUNT_INLINE_DENTRY	0x00000200
-#define F2FS_MOUNT_FLUSH_MERGE		0x00000400
-#define F2FS_MOUNT_NOBARRIER		0x00000800
-#define F2FS_MOUNT_FASTBOOT		0x00001000
-#define F2FS_MOUNT_READ_EXTENT_CACHE	0x00002000
-#define F2FS_MOUNT_DATA_FLUSH		0x00008000
-#define F2FS_MOUNT_FAULT_INJECTION	0x00010000
-#define F2FS_MOUNT_USRQUOTA		0x00080000
-#define F2FS_MOUNT_GRPQUOTA		0x00100000
-#define F2FS_MOUNT_PRJQUOTA		0x00200000
-#define F2FS_MOUNT_QUOTA		0x00400000
-#define F2FS_MOUNT_INLINE_XATTR_SIZE	0x00800000
-#define F2FS_MOUNT_RESERVE_ROOT		0x01000000
-#define F2FS_MOUNT_DISABLE_CHECKPOINT	0x02000000
-#define F2FS_MOUNT_NORECOVERY		0x04000000
-#define F2FS_MOUNT_ATGC			0x08000000
-#define F2FS_MOUNT_MERGE_CHECKPOINT	0x10000000
-#define	F2FS_MOUNT_GC_MERGE		0x20000000
-#define F2FS_MOUNT_COMPRESS_CACHE	0x40000000
-#define F2FS_MOUNT_AGE_EXTENT_CACHE	0x80000000
+#define F2FS_MOUNT_DISABLE_ROLL_FORWARD	0x00000001
+#define F2FS_MOUNT_DISCARD		0x00000002
+#define F2FS_MOUNT_NOHEAP		0x00000004
+#define F2FS_MOUNT_XATTR_USER		0x00000008
+#define F2FS_MOUNT_POSIX_ACL		0x00000010
+#define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000020
+#define F2FS_MOUNT_INLINE_XATTR		0x00000040
+#define F2FS_MOUNT_INLINE_DATA		0x00000080
+#define F2FS_MOUNT_INLINE_DENTRY	0x00000100
+#define F2FS_MOUNT_FLUSH_MERGE		0x00000200
+#define F2FS_MOUNT_NOBARRIER		0x00000400
+#define F2FS_MOUNT_FASTBOOT		0x00000800
+#define F2FS_MOUNT_READ_EXTENT_CACHE	0x00001000
+#define F2FS_MOUNT_DATA_FLUSH		0x00002000
+#define F2FS_MOUNT_FAULT_INJECTION	0x00004000
+#define F2FS_MOUNT_USRQUOTA		0x00008000
+#define F2FS_MOUNT_GRPQUOTA		0x00010000
+#define F2FS_MOUNT_PRJQUOTA		0x00020000
+#define F2FS_MOUNT_QUOTA		0x00040000
+#define F2FS_MOUNT_INLINE_XATTR_SIZE	0x00080000
+#define F2FS_MOUNT_RESERVE_ROOT		0x00100000
+#define F2FS_MOUNT_DISABLE_CHECKPOINT	0x00200000
+#define F2FS_MOUNT_NORECOVERY		0x00400000
+#define F2FS_MOUNT_ATGC			0x00800000
+#define F2FS_MOUNT_MERGE_CHECKPOINT	0x01000000
+#define	F2FS_MOUNT_GC_MERGE		0x02000000
+#define F2FS_MOUNT_COMPRESS_CACHE	0x04000000
+#define F2FS_MOUNT_AGE_EXTENT_CACHE	0x08000000
 
 #define F2FS_OPTION(sbi)	((sbi)->mount_opt)
 #define clear_opt(sbi, option)	(F2FS_OPTION(sbi).opt &= ~F2FS_MOUNT_##option)
@@ -390,6 +390,7 @@ struct f2fs_mount_info {
 	int fs_mode;			/* fs mode: LFS or ADAPTIVE */
 	int bggc_mode;			/* bggc mode: off, on or sync */
 	int memory_mode;		/* memory mode */
+	int errors;			/* errors parameter */
 	int discard_unit;		/*
 					 * discard command's offset/size should
 					 * be aligned to this unit: block,
@@ -413,21 +414,21 @@ struct f2fs_mount_info {
 	unsigned char noextensions[COMPRESS_EXT_NUM][F2FS_EXTENSION_LEN]; /* extensions */
 };
 
-#define F2FS_FEATURE_ENCRYPT		0x0001
-#define F2FS_FEATURE_BLKZONED		0x0002
-#define F2FS_FEATURE_ATOMIC_WRITE	0x0004
-#define F2FS_FEATURE_EXTRA_ATTR		0x0008
-#define F2FS_FEATURE_PRJQUOTA		0x0010
-#define F2FS_FEATURE_INODE_CHKSUM	0x0020
-#define F2FS_FEATURE_FLEXIBLE_INLINE_XATTR	0x0040
-#define F2FS_FEATURE_QUOTA_INO		0x0080
-#define F2FS_FEATURE_INODE_CRTIME	0x0100
-#define F2FS_FEATURE_LOST_FOUND		0x0200
-#define F2FS_FEATURE_VERITY		0x0400
-#define F2FS_FEATURE_SB_CHKSUM		0x0800
-#define F2FS_FEATURE_CASEFOLD		0x1000
-#define F2FS_FEATURE_COMPRESSION	0x2000
-#define F2FS_FEATURE_RO			0x4000
+#define F2FS_FEATURE_ENCRYPT			0x00000001
+#define F2FS_FEATURE_BLKZONED			0x00000002
+#define F2FS_FEATURE_ATOMIC_WRITE		0x00000004
+#define F2FS_FEATURE_EXTRA_ATTR			0x00000008
+#define F2FS_FEATURE_PRJQUOTA			0x00000010
+#define F2FS_FEATURE_INODE_CHKSUM		0x00000020
+#define F2FS_FEATURE_FLEXIBLE_INLINE_XATTR	0x00000040
+#define F2FS_FEATURE_QUOTA_INO			0x00000080
+#define F2FS_FEATURE_INODE_CRTIME		0x00000100
+#define F2FS_FEATURE_LOST_FOUND			0x00000200
+#define F2FS_FEATURE_VERITY			0x00000400
+#define F2FS_FEATURE_SB_CHKSUM			0x00000800
+#define F2FS_FEATURE_CASEFOLD			0x00001000
+#define F2FS_FEATURE_COMPRESSION		0x00002000
+#define F2FS_FEATURE_RO				0x00004000
 
 #define __F2FS_HAS_FEATURE(raw_super, mask)				\
 	((raw_super->feature & cpu_to_le32(mask)) != 0)
@@ -1495,7 +1496,10 @@ enum iostat_type {
 	APP_BUFFERED_IO,		/* app buffered write IOs */
 	APP_WRITE_IO,			/* app write IOs */
 	APP_MAPPED_IO,			/* app mapped IOs */
+	APP_BUFFERED_CDATA_IO,		/* app buffered write IOs on compressed file */
+	APP_MAPPED_CDATA_IO,		/* app mapped write IOs on compressed file */
 	FS_DATA_IO,			/* data IOs from kworker/fsync/reclaimer */
+	FS_CDATA_IO,			/* data IOs from kworker/fsync/reclaimer on compressed file */
 	FS_NODE_IO,			/* node IOs from kworker/fsync/reclaimer */
 	FS_META_IO,			/* meta IOs from kworker/reclaimer */
 	FS_GC_DATA_IO,			/* data IOs from forground gc */
@@ -1509,6 +1513,8 @@ enum iostat_type {
 	APP_BUFFERED_READ_IO,		/* app buffered read IOs */
 	APP_READ_IO,			/* app read IOs */
 	APP_MAPPED_READ_IO,		/* app mapped read IOs */
+	APP_BUFFERED_CDATA_READ_IO,	/* app buffered read IOs on compressed file  */
+	APP_MAPPED_CDATA_READ_IO,	/* app mapped read IOs on compressed file  */
 	FS_DATA_READ_IO,		/* data read IOs */
 	FS_GDATA_READ_IO,		/* data read IOs from background gc */
 	FS_CDATA_READ_IO,		/* compressed data read IOs */
@@ -1516,7 +1522,9 @@ enum iostat_type {
 	FS_META_READ_IO,		/* meta read IOs */
 
 	/* other */
-	FS_DISCARD,			/* discard */
+	FS_DISCARD_IO,			/* discard */
+	FS_FLUSH_IO,			/* flush */
+	FS_ZONE_RESET_IO,		/* zone reset */
 	NR_IO_TYPE,
 };
 
@@ -1559,6 +1567,11 @@ struct f2fs_bio_info {
 	struct bio *bio;		/* bios to merge */
 	sector_t last_block_in_bio;	/* last block number */
 	struct f2fs_io_info fio;	/* store buffered io info. */
+#ifdef CONFIG_BLK_DEV_ZONED
+	struct completion zone_wait;	/* condition value for the previous open zone to close */
+	struct bio *zone_pending_bio;	/* pending bio for the previous zone */
+	void *bi_private;		/* previous bi_private for pending bio */
+#endif
 	struct f2fs_rwsem io_rwsem;	/* blocking op for bio */
 	spinlock_t io_lock;		/* serialize DATA/NODE IOs */
 	struct list_head io_list;	/* track fios */
@@ -1712,6 +1725,12 @@ enum {
 	MEMORY_MODE_LOW,	/* memory mode for low memry devices */
 };
 
+enum errors_option {
+	MOUNT_ERRORS_READONLY,	/* remount fs ro on errors */
+	MOUNT_ERRORS_CONTINUE,	/* continue on errors */
+	MOUNT_ERRORS_PANIC,	/* panic on errors */
+};
+
 static inline int f2fs_test_bit(unsigned int nr, char *addr);
 static inline void f2fs_set_bit(unsigned int nr, char *addr);
 static inline void f2fs_clear_bit(unsigned int nr, char *addr);
@@ -1745,6 +1764,7 @@ enum compress_algorithm_type {
 	COMPRESS_LZO,
 	COMPRESS_LZ4,
 	COMPRESS_ZSTD,
+	COMPRESS_LZORLE,	/* on-disk value only: 3.10 has no lzo-rle */
 	COMPRESS_MAX,
 };
 
@@ -1767,6 +1787,8 @@ struct compress_data {
 #define COMPRESS_HEADER_SIZE	(sizeof(struct compress_data))
 
 #define F2FS_COMPRESSED_PAGE_MAGIC	0xF5F2C000
+
+#define F2FS_ZSTD_DEFAULT_CLEVEL	1
 
 #define	COMPRESS_LEVEL_OFFSET	8
 
@@ -1864,7 +1886,6 @@ struct f2fs_sb_info {
 
 #ifdef CONFIG_BLK_DEV_ZONED
 	unsigned int blocks_per_blkz;		/* F2FS blocks per zone */
-	unsigned int log_blocks_per_blkz;	/* log2 F2FS blocks per zone */
 #endif
 
 	/* for node-related operations */
@@ -2063,8 +2084,14 @@ struct f2fs_sb_info {
 
 	struct workqueue_struct *post_read_wq;	/* post read workqueue */
 
-	unsigned char errors[MAX_F2FS_ERRORS];	/* error flags */
-	spinlock_t error_lock;			/* protect errors array */
+	/*
+	 * If we are in irq context, let's update error information into
+	 * on-disk superblock in the work.
+	 */
+	struct work_struct s_error_work;
+	unsigned char errors[MAX_F2FS_ERRORS];		/* error flags */
+	unsigned char stop_reason[MAX_STOP_REASON];	/* stop reason */
+	spinlock_t error_lock;			/* protect errors/stop_reason array */
 	bool error_dirty;			/* errors of sb is dirty */
 
 	struct kmem_cache *inline_xattr_slab;	/* inline xattr entry */
@@ -2102,8 +2129,9 @@ struct f2fs_sb_info {
 #ifdef CONFIG_F2FS_IOSTAT
 	/* For app/fs IO statistics */
 	spinlock_t iostat_lock;
-	unsigned long long rw_iostat[NR_IO_TYPE];
-	unsigned long long prev_rw_iostat[NR_IO_TYPE];
+	unsigned long long iostat_count[NR_IO_TYPE];
+	unsigned long long iostat_bytes[NR_IO_TYPE];
+	unsigned long long prev_iostat_bytes[NR_IO_TYPE];
 	bool iostat_enable;
 	unsigned long iostat_next_period;
 	unsigned int iostat_period_ms;
@@ -3290,6 +3318,8 @@ static inline void f2fs_change_bit(unsigned int nr, char *addr)
 #define F2FS_PROJINHERIT_FL		0x20000000 /* Create with parents projid */
 #define F2FS_CASEFOLD_FL		0x40000000 /* Casefolded file */
 
+#define F2FS_QUOTA_DEFAULT_FL		(F2FS_NOATIME_FL | F2FS_IMMUTABLE_FL)
+
 /* Flags that should be inherited by new inodes from their parent. */
 #define F2FS_FL_INHERITED (F2FS_SYNC_FL | F2FS_NODUMP_FL | F2FS_NOATIME_FL | \
 			   F2FS_DIRSYNC_FL | F2FS_PROJINHERIT_FL | \
@@ -3732,6 +3762,19 @@ static inline void wbc_account_io(struct writeback_control *wbc,
 {
 }
 
+static inline void *f2fs_getname(struct f2fs_sb_info *sbi)
+{
+	if (time_to_inject(sbi, FAULT_KMALLOC))
+		return NULL;
+
+	return __getname();
+}
+
+static inline void f2fs_putname(char *buf)
+{
+	__putname(buf);
+}
+
 static inline void *f2fs_kzalloc(struct f2fs_sb_info *sbi,
 					size_t size, gfp_t flags)
 {
@@ -3766,6 +3809,8 @@ static inline int get_inline_xattr_addrs(struct inode *inode)
 #define f2fs_get_inode_mode(i) \
 	((is_inode_flag_set(i, FI_ACL_MODE)) ? \
 	 (F2FS_I(i)->i_acl_mode) : ((i)->i_mode))
+
+#define F2FS_MIN_EXTRA_ATTR_SIZE		(sizeof(__le32))
 
 #define F2FS_TOTAL_EXTRA_ATTR_SIZE			\
 	(offsetof(struct f2fs_inode, i_extra_end) -	\
@@ -3908,9 +3953,11 @@ int f2fs_enable_quota_files(struct f2fs_sb_info *sbi, bool rdonly);
 int f2fs_quota_sync(struct super_block *sb, int type);
 loff_t max_file_blocks(struct inode *inode);
 void f2fs_quota_off_umount(struct super_block *sb);
-void f2fs_handle_stop(struct f2fs_sb_info *sbi, unsigned char reason);
 void f2fs_save_errors(struct f2fs_sb_info *sbi, unsigned char flag);
+void f2fs_handle_critical_error(struct f2fs_sb_info *sbi, unsigned char reason,
+							bool irq_context);
 void f2fs_handle_error(struct f2fs_sb_info *sbi, unsigned char error);
+void f2fs_handle_error_async(struct f2fs_sb_info *sbi, unsigned char error);
 int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover);
 int f2fs_sync_fs(struct super_block *sb, int sync);
 int f2fs_sanity_check_ckpt(struct f2fs_sb_info *sbi);
@@ -4184,7 +4231,7 @@ void f2fs_stop_gc_thread(struct f2fs_sb_info *sbi);
 block_t f2fs_start_bidx_of_node(unsigned int node_ofs, struct inode *inode);
 int f2fs_gc(struct f2fs_sb_info *sbi, struct f2fs_gc_control *gc_control);
 void f2fs_build_gc_manager(struct f2fs_sb_info *sbi);
-int f2fs_resize_fs(struct f2fs_sb_info *sbi, __u64 block_count);
+int f2fs_resize_fs(struct file *filp, __u64 block_count);
 int __init f2fs_create_garbage_collection_cache(void);
 void f2fs_destroy_garbage_collection_cache(void);
 /* victim selection function for cleaning and SSR */
@@ -4584,6 +4631,7 @@ bool f2fs_compress_write_end(struct inode *inode, void *fsdata,
 int f2fs_truncate_partial_cluster(struct inode *inode, u64 from, bool lock);
 void f2fs_compress_write_end_io(struct bio *bio, struct page *page);
 bool f2fs_is_compress_backend_ready(struct inode *inode);
+bool f2fs_is_compress_level_valid(int alg, int lvl);
 int __init f2fs_init_compress_mempool(void);
 void f2fs_destroy_compress_mempool(void);
 void f2fs_decompress_cluster(struct decompress_io_ctx *dic, bool in_task);
@@ -4648,6 +4696,7 @@ static inline bool f2fs_is_compress_backend_ready(struct inode *inode)
 	/* not support compression */
 	return false;
 }
+static inline bool f2fs_is_compress_level_valid(int alg, int lvl) { return false; }
 static inline struct page *f2fs_compress_control_page(struct page *page)
 {
 	WARN_ON_ONCE(1);
@@ -4760,7 +4809,7 @@ F2FS_FEATURE_FUNCS(readonly, RO);
 static inline bool f2fs_blkz_is_seq(struct f2fs_sb_info *sbi, int devi,
 				    block_t blkaddr)
 {
-	unsigned int zno = blkaddr >> sbi->log_blocks_per_blkz;
+	unsigned int zno = blkaddr / sbi->blocks_per_blkz;
 
 	return test_bit(zno, FDEV(devi).blkz_seq);
 }
