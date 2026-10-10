@@ -785,8 +785,12 @@ CONFIG_F2FS_FS_SECURITY=y
 # kasar. Dukungan cgroup dibuang pada backport ini -- lihat include/linux/psi.h.
 CONFIG_PSI=y
 # CONFIG_PSI_DEFAULT_DISABLED is not set
-CONFIG_F2FS_FS_ENCRYPTION=y
-CONFIG_FS_ENCRYPTION=y
+# Cabang wip/f2fs-6.0: f2fs level 2022 butuh fscrypt v2, yang belum diport.
+# /data LOS20 tidak terenkripsi (0 inode berflag E, tanpa fileencryption),
+# jadi enkripsi dimatikan dulu. JANGAN gabungkan ke cabang yang dipakai ROM
+# dengan FBE (lineage-23) sebelum fscrypt v2 ada.
+# CONFIG_F2FS_FS_ENCRYPTION is not set
+# CONFIG_FS_ENCRYPTION is not set
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ASCII=y
 CONFIG_NLS_ISO8859_1=y
