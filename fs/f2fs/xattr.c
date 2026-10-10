@@ -20,6 +20,7 @@
 #include <linux/security.h>
 #include "f2fs.h"
 #include "xattr.h"
+#include "segment.h"
 
 static size_t f2fs_xattr_generic_list(struct dentry *dentry, char *list,
 		size_t list_size, const char *name, size_t len, int type)
@@ -774,6 +775,11 @@ int f2fs_setxattr(struct inode *inode, int index, const char *name,
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int err;
+
+	if (unlikely(f2fs_cp_error(sbi)))
+		return -EIO;
+	if (!f2fs_is_checkpoint_ready(sbi))
+		return -ENOSPC;
 
 	dquot_initialize(inode);
 
