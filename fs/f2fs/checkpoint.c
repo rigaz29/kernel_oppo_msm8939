@@ -30,12 +30,9 @@ void f2fs_stop_checkpoint(struct f2fs_sb_info *sbi, bool end_io,
 						unsigned char reason)
 {
 	f2fs_build_fault_attr(sbi, 0, 0);
-	set_ckpt_flags(sbi, CP_ERROR_FLAG);
-	if (!end_io) {
+	if (!end_io)
 		f2fs_flush_merged_writes(sbi);
-
-		f2fs_handle_stop(sbi, reason);
-	}
+	f2fs_handle_critical_error(sbi, reason, end_io);
 }
 
 /*
@@ -93,7 +90,7 @@ repeat:
 		return ERR_PTR(err);
 	}
 
-	f2fs_update_iostat(sbi, FS_META_READ_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(sbi, NULL, FS_META_READ_IO, F2FS_BLKSIZE);
 
 	lock_page(page);
 	if (unlikely(page->mapping != mapping)) {
@@ -303,7 +300,7 @@ int f2fs_ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages,
 		f2fs_put_page(page, err ? 1 : 0);
 
 		if (!err)
-			f2fs_update_iostat(sbi, FS_META_READ_IO, F2FS_BLKSIZE);
+			f2fs_update_iostat(sbi, NULL, FS_META_READ_IO, F2FS_BLKSIZE);
 	}
 out:
 	blk_finish_plug(&plug);

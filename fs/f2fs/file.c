@@ -45,8 +45,8 @@ static int f2fs_filemap_fault(struct vm_area_struct *vma,
 	f2fs_up_read(&F2FS_I(inode)->i_mmap_sem);
 
 	if (!err)
-		f2fs_update_iostat(F2FS_I_SB(inode), APP_MAPPED_READ_IO,
-							F2FS_BLKSIZE);
+		f2fs_update_iostat(F2FS_I_SB(inode), inode,
+					APP_MAPPED_READ_IO, F2FS_BLKSIZE);
 
 	trace_f2fs_filemap_fault(inode, vmf->pgoff, (unsigned long)err);
 
@@ -155,7 +155,7 @@ static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 	if (!PageUptodate(page))
 		SetPageUptodate(page);
 
-	f2fs_update_iostat(sbi, APP_MAPPED_IO, F2FS_BLKSIZE);
+	f2fs_update_iostat(sbi, inode, APP_MAPPED_IO, F2FS_BLKSIZE);
 	f2fs_update_time(sbi, REQ_TIME);
 
 	trace_f2fs_vm_page_mkwrite(page, DATA);
@@ -2313,7 +2313,6 @@ static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
 				ret = 0;
 				f2fs_stop_checkpoint(sbi, false,
 						STOP_CP_REASON_SHUTDOWN);
-				set_sbi_flag(sbi, SBI_IS_SHUTDOWN);
 				trace_f2fs_shutdown(sbi, in, ret);
 			}
 			return ret;
@@ -2340,16 +2339,13 @@ static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
 		if (ret)
 			goto out;
 		f2fs_stop_checkpoint(sbi, false, STOP_CP_REASON_SHUTDOWN);
-		set_sbi_flag(sbi, SBI_IS_SHUTDOWN);
 		break;
 	case F2FS_GOING_DOWN_NOSYNC:
 		f2fs_stop_checkpoint(sbi, false, STOP_CP_REASON_SHUTDOWN);
-		set_sbi_flag(sbi, SBI_IS_SHUTDOWN);
 		break;
 	case F2FS_GOING_DOWN_METAFLUSH:
 		f2fs_sync_meta_pages(sbi, META, LONG_MAX, FS_META_IO);
 		f2fs_stop_checkpoint(sbi, false, STOP_CP_REASON_SHUTDOWN);
-		set_sbi_flag(sbi, SBI_IS_SHUTDOWN);
 		break;
 	case F2FS_GOING_DOWN_NEED_FSCK:
 		set_sbi_flag(sbi, SBI_NEED_FSCK);
@@ -2687,9 +2683,10 @@ static int f2fs_defragment_range(struct f2fs_sb_info *sbi,
 
 	inode_lock(inode);
 
-	if (f2fs_is_atomic_file(inode)) {
+	if (is_inode_flag_set(inode, FI_COMPRESS_RELEASED) ||
+		f2fs_is_atomic_file(inode)) {
 		err = -EINVAL;
-		goto out;
+		goto unlock_out;
 	}
 
 	/* if in-place-update policy is enabled, don't waste time here */
@@ -2816,6 +2813,7 @@ clear_out:
 	clear_inode_flag(inode, FI_SKIP_WRITES);
 out:
 	clear_inode_flag(inode, FI_OPU_WRITE);
+unlock_out:
 	inode_unlock(inode);
 	if (!err)
 		range->len = (u64)total << PAGE_SHIFT;
@@ -3263,7 +3261,7 @@ static int f2fs_ioc_resize_fs(struct file *filp, unsigned long arg)
 			   sizeof(block_count)))
 		return -EFAULT;
 
-	return f2fs_resize_fs(sbi, block_count);
+	return f2fs_resize_fs(filp, block_count);
 }
 
 static int f2fs_ioc_enable_verity(struct file *filp, unsigned long arg)
@@ -4218,8 +4216,11 @@ static ssize_t f2fs_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 skip_read_trace:
 	ret = generic_file_aio_read(iocb, iov, nr_segs, pos);
 
-	if (ret > 0)
-		f2fs_update_iostat(F2FS_I_SB(inode), APP_READ_IO, ret);
+	/* direct reads count themselves in f2fs_direct_IO() */
+	if (ret > 0 && (!(iocb->ki_filp->f_flags & O_DIRECT) ||
+				f2fs_force_buffered_io(inode, READ)))
+		f2fs_update_iostat(F2FS_I_SB(inode), inode,
+						APP_BUFFERED_READ_IO, ret);
 
 	if (f2fs_tp_enabled(f2fs_dataread_end))
 		trace_f2fs_dataread_end(inode, iocb->ki_pos, ret);
@@ -4395,8 +4396,11 @@ skip_write_trace:
 
 	clear_inode_flag(inode, FI_PREALLOCATED_ALL);
 
-	if (ret > 0)
-		f2fs_update_iostat(F2FS_I_SB(inode), APP_WRITE_IO, ret);
+	/* direct writes count themselves in f2fs_direct_IO() */
+	if (ret > 0 && (!(file->f_flags & O_DIRECT) ||
+				f2fs_force_buffered_io(inode, WRITE)))
+		f2fs_update_iostat(F2FS_I_SB(inode), inode,
+						APP_BUFFERED_IO, ret);
 
 out_unlock:
 	inode_unlock(inode);

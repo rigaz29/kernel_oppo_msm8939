@@ -1424,7 +1424,7 @@ static int read_node_page(struct page *page, int op_flags)
 	err = f2fs_submit_page_bio(&fio);
 
 	if (!err)
-		f2fs_update_iostat(sbi, FS_NODE_READ_IO, F2FS_BLKSIZE);
+		f2fs_update_iostat(sbi, NULL, FS_NODE_READ_IO, F2FS_BLKSIZE);
 
 	return err;
 }
@@ -1651,6 +1651,9 @@ static int __write_node_page(struct page *page, bool atomic, bool *submitted,
 	trace_f2fs_writepage(page, NODE);
 
 	if (unlikely(f2fs_cp_error(sbi))) {
+		/* keep node pages in remount-ro mode */
+		if (F2FS_OPTION(sbi).errors == MOUNT_ERRORS_READONLY)
+			goto redirty_out;
 		ClearPageUptodate(page);
 		dec_page_count(sbi, F2FS_DIRTY_NODES);
 		unlock_page(page);
@@ -2150,9 +2153,6 @@ int f2fs_wait_on_node_pages_writeback(struct f2fs_sb_info *sbi,
 		f2fs_wait_on_page_writeback(page, NODE, true, false);
 
 		put_page(page);
-
-		if (ret)
-			break;
 	}
 
 	if (unlikely(test_and_clear_bit(AS_ENOSPC, &NODE_MAPPING(sbi)->flags)))
