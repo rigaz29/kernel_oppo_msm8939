@@ -1405,11 +1405,6 @@ default_check:
 		}
 	}
 
-	if (test_opt(sbi, DISABLE_CHECKPOINT) && f2fs_lfs_mode(sbi)) {
-		f2fs_err(sbi, "LFS is not compatible with checkpoint=disable");
-		return -EINVAL;
-	}
-
 	if (test_opt(sbi, ATGC) && f2fs_lfs_mode(sbi)) {
 		f2fs_err(sbi, "LFS is not compatible with ATGC");
 		return -EINVAL;
@@ -3382,6 +3377,14 @@ loff_t max_file_blocks(struct inode *inode)
 	/* one double indirect node block */
 	leaf_count *= NIDS_PER_BLOCK;
 	result += leaf_count;
+
+	/*
+	 * For compatibility with FSCRYPT_POLICY_FLAG_IV_INO_LBLK_{64,32} with
+	 * a 4K crypto data unit, we must restrict the max filesize to what can
+	 * fit within U32_MAX + 1 data units.
+	 */
+
+	result = min(result, (((loff_t)U32_MAX + 1) * 4096) >> F2FS_BLKSIZE_BITS);
 
 	return result;
 }
