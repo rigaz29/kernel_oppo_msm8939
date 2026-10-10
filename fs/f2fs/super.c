@@ -66,6 +66,7 @@ const char *f2fs_fault_name[FAULT_MAX] = {
 	[FAULT_LOCK_OP]			= "lock_op",
 	[FAULT_BLKADDR_VALIDITY]	= "invalid blkaddr",
 	[FAULT_BLKADDR_CONSISTENCE]	= "inconsistent blkaddr",
+	[FAULT_NO_SEGMENT]		= "no free segment",
 };
 
 void f2fs_build_fault_attr(struct f2fs_sb_info *sbi, unsigned int rate,
@@ -2180,6 +2181,7 @@ static int f2fs_disable_checkpoint(struct f2fs_sb_info *sbi)
 			.init_gc_type = FG_GC,
 			.should_migrate_blocks = false,
 			.err_gc_skipped = true,
+			.no_bg_gc = true,
 			.nr_free_secs = 1 };
 
 		f2fs_down_write(&sbi->gc_lock);
@@ -3783,9 +3785,9 @@ static void init_sb_info(struct f2fs_sb_info *sbi)
 	sbi->segs_per_sec = le32_to_cpu(raw_super->segs_per_sec);
 	sbi->secs_per_zone = le32_to_cpu(raw_super->secs_per_zone);
 	sbi->total_sections = le32_to_cpu(raw_super->section_count);
-	sbi->total_node_count =
-		((le32_to_cpu(raw_super->segment_count_nat) / 2) *
-		NAT_ENTRY_PER_BLOCK) << sbi->log_blocks_per_seg;
+	sbi->total_node_count = SEGS_TO_BLKS(sbi,
+			((le32_to_cpu(raw_super->segment_count_nat) / 2) *
+			NAT_ENTRY_PER_BLOCK));
 	F2FS_ROOT_INO(sbi) = le32_to_cpu(raw_super->root_ino);
 	F2FS_NODE_INO(sbi) = le32_to_cpu(raw_super->node_ino);
 	F2FS_META_INO(sbi) = le32_to_cpu(raw_super->meta_ino);
@@ -4230,14 +4232,14 @@ static int f2fs_scan_devices(struct f2fs_sb_info *sbi)
 			if (i == 0) {
 				FDEV(i).start_blk = 0;
 				FDEV(i).end_blk = FDEV(i).start_blk +
-				    (FDEV(i).total_segments <<
-				    sbi->log_blocks_per_seg) - 1 +
-				    le32_to_cpu(raw_super->segment0_blkaddr);
+					SEGS_TO_BLKS(sbi,
+					FDEV(i).total_segments) - 1 +
+					le32_to_cpu(raw_super->segment0_blkaddr);
 			} else {
 				FDEV(i).start_blk = FDEV(i - 1).end_blk + 1;
 				FDEV(i).end_blk = FDEV(i).start_blk +
-					(FDEV(i).total_segments <<
-					sbi->log_blocks_per_seg) - 1;
+						SEGS_TO_BLKS(sbi,
+						FDEV(i).total_segments) - 1;
 			}
 			FDEV(i).bdev = blkdev_get_by_path(FDEV(i).path,
 					sbi->sb->s_mode, sbi->sb->s_type);
@@ -4703,7 +4705,12 @@ try_onemore:
 #endif
 
 reset_checkpoint:
-	f2fs_init_inmem_curseg(sbi);
+	if (err)
+		goto free_meta;
+
+	err = f2fs_init_inmem_curseg(sbi);
+	if (err)
+		goto sync_free_meta;
 
 	/* f2fs_recover_fsync_data() cleared this already */
 	clear_sbi_flag(sbi, SBI_POR_DOING);
