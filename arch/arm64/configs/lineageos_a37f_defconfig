@@ -788,7 +788,6 @@ CONFIG_PSI=y
 # /data LOS20 tidak terenkripsi (0 inode berflag E, tanpa fileencryption),
 # jadi enkripsi dimatikan dulu. JANGAN gabungkan ke cabang yang dipakai ROM
 # dengan FBE (lineage-23) sebelum fscrypt v2 ada.
-# CONFIG_F2FS_FS_ENCRYPTION is not set
 # CONFIG_FS_ENCRYPTION is not set
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ASCII=y
