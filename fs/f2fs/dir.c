@@ -1046,6 +1046,7 @@ int f2fs_fill_dentries(struct file *file, void *dirent, filldir_t filldir,
 				  __func__, le16_to_cpu(de->name_len));
 			set_sbi_flag(sbi, SBI_NEED_FSCK);
 			err = -EFSCORRUPTED;
+			f2fs_handle_error(sbi, ERROR_CORRUPTED_DIRENT);
 			goto out;
 		}
 
