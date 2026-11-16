@@ -665,6 +665,27 @@ config SYSVIPC_COMPAT
 	def_bool y
 	depends on COMPAT && SYSVIPC
 
+# A37: WAJIB untuk FBE dengan userspace 32-bit di atas kernel arm64.
+#
+# Di kernel 3.10 KEYS_COMPAT hanya didefinisikan per-arsitektur -- ada di
+# arch/{x86,s390,powerpc,sparc}/Kconfig tapi TIDAK di arm64, karena arm64 masih
+# baru saat itu. Akibatnya security/keys/Makefile:18
+# (obj-$(CONFIG_KEYS_COMPAT) += compat.o) tidak pernah membangun compat.o,
+# sehingga compat_sys_keyctl yang dirujuk unistd32.h:647 tidak ada dan linker
+# mengisi entri syscall 311 dengan sys_ni_syscall.
+#
+# Gejalanya: SETIAP panggilan keyctl() dari userspace 32-bit mengembalikan
+# ENOSYS. vold gagal di jalur mundur fscrypt v1 dengan
+# "Unable to find device keyring: Function not implemented"
+# (system/vold/KeyUtil.cpp:159-161), enablefilecrypto gagal, init menganggapnya
+# fatal, dan perangkat reboot ke recovery -- bootloop tanpa pesan yang jelas.
+#
+# Rujukan a6010 tidak bisa mengajari ini: kernel mereka arch/arm 32-bit murni,
+# jadi tidak ada lapisan compat sama sekali.
+config KEYS_COMPAT
+	def_bool y
+	depends on COMPAT && KEYS
+
 endmenu
 
 menu "Power management options"

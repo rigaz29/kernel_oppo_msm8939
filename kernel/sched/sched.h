@@ -688,6 +688,21 @@ extern int group_balance_cpu(struct sched_group *sg);
 
 #endif /* CONFIG_SMP */
 
+
+/*
+ * Keempatnya semula static di kernel/sched/core.c. PSI (kernel/sched/psi.c)
+ * dan pembungkusnya di stats.h memakainya, jadi linkage-nya dibuka dan
+ * dideklarasikan DI SINI -- sebelum #include "stats.h" di bawah, bukan di
+ * akhir berkas, karena stats.h sudah memanggilnya.
+ */
+extern unsigned long calc_load(unsigned long load, unsigned long exp,
+			       unsigned long active);
+extern unsigned long calc_load_n(unsigned long load, unsigned long exp,
+				 unsigned long active, unsigned int n);
+extern struct rq *__task_rq_lock(struct task_struct *p) __acquires(rq->lock);
+extern void __task_rq_unlock(struct rq *rq) __releases(rq->lock);
+extern struct rq *this_rq_lock(void) __acquires(rq->lock);
+
 #include "stats.h"
 #include "auto_group.h"
 
@@ -1310,6 +1325,7 @@ static inline void idle_balance(int cpu, struct rq *rq)
 
 #ifdef CONFIG_SYSRQ_SCHED_DEBUG
 extern void sysrq_sched_debug_show(void);
+
 #endif
 extern void sched_init_granularity(void);
 extern void update_max_interval(void);

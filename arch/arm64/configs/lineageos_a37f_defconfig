@@ -45,6 +45,18 @@ CONFIG_PANIC_TIMEOUT=5
 # Bisa diubah runtime: /proc/sys/kernel/hung_task_timeout_secs
 CONFIG_DETECT_HUNG_TASK=y
 CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=90
+# Ring buffer kernel: 2^19 = 512 KB, dari default 2^17 = 128 KB.
+#
+# 128 KB terlalu kecil untuk perangkat ini. Terukur: pada 7,5 jam uptime,
+# `dmesg` hanya memuat 2 menit terakhir, dan log boot sudah hilang jauh
+# sebelum sempat dibaca -- dua kali menggagalkan diagnosis PSI.
+#
+# Penyebab utamanya sudah ditekan terpisah (dump register syscall tak dikenal
+# di arch/arm64/kernel/traps.c), tapi 128 KB tetap sempit untuk kernel yang
+# juga menulis audit SELinux permissive terus-menerus.
+#
+# Ongkosnya 384 KB RAM statis dari 1887 MB -- 0,02%.
+CONFIG_LOG_BUF_SHIFT=19
 CONFIG_KALLSYMS=y
 CONFIG_DEBUG_FS=y
 CONFIG_CC_STACKPROTECTOR=y
@@ -98,6 +110,7 @@ CONFIG_XFRM_USER=y
 CONFIG_XFRM_STATISTICS=y
 CONFIG_NET_KEY=y
 CONFIG_INET=y
+CONFIG_WIREGUARD=y
 CONFIG_IP_MULTICAST=y
 CONFIG_IP_ADVANCED_ROUTER=y
 CONFIG_IP_MULTIPLE_TABLES=y
@@ -383,6 +396,24 @@ CONFIG_REGULATOR_CPR=y
 CONFIG_MEDIA_SUPPORT=y
 CONFIG_MEDIA_CAMERA_SUPPORT=y
 CONFIG_MEDIA_RADIO_SUPPORT=y
+# Radio FM. CONFIG_MEDIA_RADIO_SUPPORT saja hanya menyalakan KERANGKA v4l2
+# radio, bukan drivernya -- akibatnya /dev/radio0 tidak pernah dibuat dan
+# aplikasi FM gagal menyala meski userspace-nya lengkap (libfmjni.so,
+# libfmq.so, com.android.fmradio semuanya ada dan berjalan).
+#
+# Kedua baris ini HILANG saat porting ke defconfig LineageOS. Sumber drivernya
+# selalu ada di pohon (drivers/media/radio/radio-iris.c dan
+# radio-iris-transport.c), dan defconfig CAF asli di pohon yang sama
+# mengaktifkannya: arch/arm64/configs/msm-perf_defconfig:358-359.
+# acroreiser juga menyalakannya.
+#
+# Prasyaratnya sudah terpenuhi tanpa tambahan apa pun:
+#   CONFIG_VIDEO_DEV=y, CONFIG_VIDEO_V4L2=y  (terpilih lewat MSMB_CAMERA)
+#   CONFIG_MSM_SMD=y                          transport ke chip
+#   CONFIG_WCNSS_CORE_PRONTO=y                chip FM ada di kombo WCNSS
+# radio-iris-transport.c:180 membuka kanal SMD "APPS_FM" ke SMD_APPS_WCNSS.
+CONFIG_RADIO_IRIS=y
+CONFIG_RADIO_IRIS_TRANSPORT=y
 CONFIG_MEDIA_CONTROLLER=y
 CONFIG_VIDEO_V4L2_SUBDEV_API=y
 CONFIG_VIDEOBUF2_MSM_MEM=y
@@ -618,6 +649,25 @@ CONFIG_PSTORE_PMSG=y
 CONFIG_PSTORE_RAM=y
 CONFIG_F2FS_FS=y
 CONFIG_F2FS_FS_SECURITY=y
+# FBE (file-based encryption). fs/crypto/ di pohon ini adalah backport fscrypt
+# v1 -- tidak ada keyring.c maupun hkdf.c, jadi hanya FS_IOC_SET/GET_ENCRYPTION_
+# POLICY yang tersedia, bukan FS_IOC_ADD_ENCRYPTION_KEY. vold Android 16
+# mendeteksi ini sendiri (system/vold/KeyUtil.cpp:91-99) dan mundur ke session
+# keyring, jadi jalur v1 tetap didukung.
+#
+# HANYA f2fs. fs/ext4/ di pohon ini nol dukungan enkripsi (fscrypt 0,
+# ext4_encrypt 0, INCOMPAT_ENCRYPT 0); satu-satunya yang mendaftarkan
+# fscrypt_operations adalah f2fs (fs/f2fs/super.c:1222).
+#
+# FS_ENCRYPTION menyeleksi CRYPTO_AES/CBC/ECB/XTS/CTS/CTR/SHA256 dan KEYS
+# sendiri, jadi tidak perlu didaftarkan di sini.
+# PSI: informasi tersendat (pressure stall). lmkd userspace memakainya lewat
+# /proc/pressure/memory; tanpa ini ia jatuh ke jalur vmpressure yang lebih
+# kasar. Dukungan cgroup dibuang pada backport ini -- lihat include/linux/psi.h.
+CONFIG_PSI=y
+# CONFIG_PSI_DEFAULT_DISABLED is not set
+CONFIG_F2FS_FS_ENCRYPTION=y
+CONFIG_FS_ENCRYPTION=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ASCII=y
 CONFIG_NLS_ISO8859_1=y
@@ -665,6 +715,28 @@ CONFIG_CRYPTO_XCBC=y
 CONFIG_CRYPTO_MD4=y
 CONFIG_CRYPTO_SHA256=y
 CONFIG_CRYPTO_SHA512=y
+# Adiantum: enkripsi panjang-tetap untuk CPU tanpa instruksi AES.
+# Cortex-A53 di msm8916 tidak punya ARMv8 Crypto Extensions -- /proc/cpuinfo
+# tidak memuat "aes", dan seluruh driver AES di sini berakhiran -neon atau
+# -generic. AES-256-XTS terukur mentok di 35 MB/s pada perangkat ini.
+# CRYPTO_ADIANTUM otomatis meng-select CHACHA20, POLY1305, dan NHPOLY1305.
+CONFIG_CRYPTO_ADIANTUM=y
+# ChaCha berbantuan NEON untuk arm64. ChaCha adalah komponen terberat
+# Adiantum, dan tanpa ini seluruh Adiantum berjalan sebagai C generik melawan
+# AES yang ber-NEON -- perbandingan yang tidak adil. .S diambil apa adanya dari
+# mainline v5.4; glue-nya ditulis ulang di atas blkcipher_walk karena skcipher
+# belum ada di 3.10.
+CONFIG_CRYPTO_CHACHA20_NEON=y
+# NHPoly1305 ber-NEON: komponen C generik terberat yang tersisa di Adiantum
+# setelah ChaCha memakai NEON.
+CONFIG_CRYPTO_NHPOLY1305_NEON=y
+# AF_ALG: antarmuka crypto kernel dari userspace. Dipakai untuk MENGUKUR
+# adiantum(xchacha12,aes) melawan xts(aes) di CPU ini sebelum memutuskan
+# mengubah format /data. Dipilih daripada tcrypt karena kernel ini dibangun
+# tanpa CONFIG_MODULES, dan tcrypt built-in akan menjalankan seluruh rangkaian
+# ujinya saat boot.
+CONFIG_CRYPTO_USER_API=y
+CONFIG_CRYPTO_USER_API_SKCIPHER=y
 CONFIG_CRYPTO_TWOFISH=y
 CONFIG_CRYPTO_DEV_QCRYPTO=y
 CONFIG_CRYPTO_DEV_QCE=y
@@ -682,3 +754,11 @@ CONFIG_CRYPTO_AES_ARM64_CE_CCM=y
 CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
 CONFIG_CRYPTO_AES_ARM64_NEON_BLK=y
 CONFIG_QMI_ENCDEC=y
+
+# Bootloader msm8916 menuntut device tree DITEMPELKAN ke image kernel.
+# mkbootimg Android 16 sudah membuang opsi --dt ("ambiguous option: --dt could
+# match --dtb, --dtb_offset"), jadi penempelan dilakukan oleh kernel sendiri --
+# pendekatan yang sama dipakai a6010 di lineage-23.2 (BOARD_KERNEL_IMAGE_NAME
+# := zImage-dtb; A37 arm64 sehingga padanannya Image-dtb).
+# Lihat arch/arm64/boot/Makefile:32 dan arch/arm64/Kconfig:595.
+

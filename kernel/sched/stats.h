@@ -1,3 +1,4 @@
+#include <linux/psi.h>
 
 #ifdef CONFIG_SCHEDSTATS
 
@@ -46,6 +47,95 @@ rq_sched_info_depart(struct rq *rq, unsigned long long delta)
 # define schedstat_add(rq, field, amt)	do { } while (0)
 # define schedstat_set(var, val)	do { } while (0)
 #endif
+
+#ifdef CONFIG_PSI
+/*
+ * PSI melacak keadaan yang bertahan melewati tidur -- iowait dan tersendat
+ * memori. Karena itu ia harus membedakan TIDUR, yang mengubah keadaan runnable
+ * sebuah task, dari PEMINDAHAN, yaitu task beserta keadaannya berpindah antar
+ * CPU dan runqueue.
+ *
+ * Diadaptasi dari acroreiser; satu-satunya perubahan adalah
+ * static_branch_likely(&psi_disabled) -> psi_disabled, karena jump_label gaya
+ * 4.3 belum ada di sini (lihat include/linux/psi.h).
+ */
+static inline void psi_enqueue(struct task_struct *p, bool wakeup)
+{
+	int clear = 0, set = TSK_RUNNING;
+
+	if (psi_disabled)
+		return;
+
+	if (!wakeup || p->sched_psi_wake_requeue) {
+		if (p->flags & PF_MEMSTALL)
+			set |= TSK_MEMSTALL;
+		if (p->sched_psi_wake_requeue)
+			p->sched_psi_wake_requeue = 0;
+	} else {
+		if (p->in_iowait)
+			clear |= TSK_IOWAIT;
+	}
+
+	psi_task_change(p, clear, set);
+}
+
+static inline void psi_dequeue(struct task_struct *p, bool sleep)
+{
+	int clear = TSK_RUNNING, set = 0;
+
+	if (psi_disabled)
+		return;
+
+	if (!sleep) {
+		if (p->flags & PF_MEMSTALL)
+			clear |= TSK_MEMSTALL;
+	} else {
+		if (p->in_iowait)
+			set |= TSK_IOWAIT;
+	}
+
+	psi_task_change(p, clear, set);
+}
+
+static inline void psi_ttwu_dequeue(struct task_struct *p)
+{
+	if (psi_disabled)
+		return;
+	/*
+	 * Task sedang dipindah saat dibangunkan? Cabut keadaan tersendat yang
+	 * bertahan dari antrean lama, lalu beri tahu psi_enqueue() bahwa ia
+	 * harus mendaftarkannya ulang.
+	 */
+	if (unlikely(p->in_iowait || (p->flags & PF_MEMSTALL))) {
+		struct rq *rq;
+		int clear = 0;
+
+		if (p->in_iowait)
+			clear |= TSK_IOWAIT;
+		if (p->flags & PF_MEMSTALL)
+			clear |= TSK_MEMSTALL;
+
+		rq = __task_rq_lock(p);
+		psi_task_change(p, clear, 0);
+		p->sched_psi_wake_requeue = 1;
+		__task_rq_unlock(rq);
+	}
+}
+
+static inline void psi_task_tick(struct rq *rq)
+{
+	if (psi_disabled)
+		return;
+
+	if (unlikely(rq->curr->flags & PF_MEMSTALL))
+		psi_memstall_tick(rq->curr, cpu_of(rq));
+}
+#else /* CONFIG_PSI */
+static inline void psi_enqueue(struct task_struct *p, bool wakeup) {}
+static inline void psi_dequeue(struct task_struct *p, bool sleep) {}
+static inline void psi_ttwu_dequeue(struct task_struct *p) {}
+static inline void psi_task_tick(struct rq *rq) {}
+#endif /* CONFIG_PSI */
 
 #if defined(CONFIG_SCHEDSTATS) || defined(CONFIG_TASK_DELAY_ACCT)
 static inline void sched_info_reset_dequeued(struct task_struct *t)

@@ -2,6 +2,7 @@
 #define _LINUX_KTHREAD_H
 /* Simple interface for creating and stopping kernel threads without mess. */
 #include <linux/err.h>
+#include <linux/timer.h>
 #include <linux/sched.h>
 
 __printf(4, 5)
@@ -134,6 +135,52 @@ int kthread_worker_fn(void *worker_ptr);
 
 bool queue_kthread_work(struct kthread_worker *worker,
 			struct kthread_work *work);
+
+/*
+ * --- kthread_work bertunda: lapisan tipis di atas primitif 3.10 ---
+ *
+ * fs/crypto bukan satu-satunya yang perlu dibawa maju: PSI
+ * (kernel/sched/psi.c) memakai API kthread worker gaya 4.9 --
+ * kthread_create_worker(), kthread_queue_delayed_work(), dan kawan-kawan.
+ *
+ * Mengganti inti kthread_worker ke bentuk 4.9 BUKAN pilihan yang murah di
+ * pohon ini: struct-nya tidak kompatibel (4.9 menambah delayed_work_list dan
+ * canceling, serta membuang kthread_work.done), dan renamenya menyentuh 11
+ * pemakai lama termasuk drivers/gpu/msm/kgsl.c dan adreno_dispatch.c. Itu
+ * permukaan risiko yang jauh lebih besar daripada manfaatnya.
+ *
+ * Jadi yang ditambahkan di sini hanya apa yang benar-benar dibutuhkan, di atas
+ * primitif yang sudah ada. Semuanya BARU -- tidak ada satu pun API lama yang
+ * berubah nama atau perilaku.
+ */
+struct kthread_delayed_work {
+	struct kthread_work work;
+	struct timer_list timer;
+	/*
+	 * work->worker baru terisi saat pekerjaan benar-benar diantrekan,
+	 * sedangkan timer perlu tahu tujuannya sebelum itu.
+	 */
+	struct kthread_worker *kdw_worker;
+};
+
+void kthread_delayed_work_timer_fn(unsigned long __data);
+
+#define kthread_init_delayed_work(dwork, fn)					do {										init_kthread_work(&(dwork)->work, (fn));				init_timer(&(dwork)->timer);						(dwork)->timer.function =							kthread_delayed_work_timer_fn;					(dwork)->timer.data = (unsigned long)(dwork);				(dwork)->kdw_worker = NULL;					} while (0)
+
+/* Nama gaya 4.9 untuk primitif yang sudah ada, supaya psi.c tetap utuh. */
+#define kthread_init_work(work, fn)	init_kthread_work(work, fn)
+#define kthread_init_worker(worker)	init_kthread_worker(worker)
+#define kthread_queue_work(w, work)	queue_kthread_work(w, work)
+#define kthread_flush_work(work)	flush_kthread_work(work)
+#define kthread_flush_worker(w)		flush_kthread_worker(w)
+
+struct kthread_worker *
+kthread_create_worker(unsigned int flags, const char namefmt[], ...);
+void kthread_destroy_worker(struct kthread_worker *worker);
+bool kthread_queue_delayed_work(struct kthread_worker *worker,
+				struct kthread_delayed_work *dwork,
+				unsigned long delay);
+bool kthread_cancel_delayed_work_sync(struct kthread_delayed_work *dwork);
 void flush_kthread_work(struct kthread_work *work);
 void flush_kthread_worker(struct kthread_worker *worker);
 
