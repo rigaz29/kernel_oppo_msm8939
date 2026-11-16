@@ -26,8 +26,8 @@ jobs:
       - name: Clone Toolchains (GCC 4.9)
         run: |
           mkdir -p $HOME/android/TOOLS/GCC
-           git clone --depth=1 https://github.com/KudProject/aarch64-linux-android-4.9 $HOME/android/TOOLS/GCC/los-4.9-64
-           git clone --depth=1 -b lineage-17.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 $HOME/android/TOOLS/GCC/los-4.9-32
+          git clone --depth=1 https://github.com/KudProject/aarch64-linux-android-4.9 $HOME/android/TOOLS/GCC/los-4.9-64
+          git clone --depth=1 -b lineage-17.1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 $HOME/android/TOOLS/GCC/los-4.9-32
 
       - name: Run build.sh
         env:
