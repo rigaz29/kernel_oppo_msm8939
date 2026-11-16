@@ -1,0 +1,73 @@
+name: Build Oppo A37f Kernel (LOS 23.2)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5-dev libssl-dev libxml2-utils lzop python3 unzip zip
+
+      - name: Setup AnyKernel3 & dtbtool.c
+        run: |
+          if [ ! -d "anykernel3" ]; then
+            git clone --depth=1 https://github.com anykernel3
+          fi
+          curl -sL https://githubusercontent.com -o anykernel3/dtbtool.c
+          cat << 'EOF' > anykernel3/anykernel.sh
+          # AnyKernel3 Ramdisk Mod Script
+          properties() { '
+          kernel.string=OPPO A37f Kernel by Sanditiana26 (lineage-22)
+          do.devicecheck=0
+          do.modules=1
+          do.systemless=0
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=A37
+          device.name2=A37f
+          device.name3=a37f
+          supported.versions=
+          '; }
+
+          block=/dev/block/bootdevice/by-name/boot;
+          is_slot_device=0;
+          ramdisk_compression=auto;
+
+          . tools/ak3-core.sh;
+
+          dump_boot;
+          ui_print "Updating Kernel, DTB & Modules for A37f...";
+          write_boot;
+          EOF
+
+      - name: Set Custom Kernel Version & Host
+        run: |
+          sed -i '/CONFIG_LOCALVERSION=/d' arch/arm64/configs/lineageos_a37f_defconfig
+          echo 'CONFIG_LOCALVERSION="-Sanditiana26"' >> arch/arm64/configs/lineageos_a37f_defconfig
+
+      - name: Clone Toolchains (GCC 4.9)
+        run: |
+          mkdir -p $HOME/android/TOOLS/GCC
+          git clone --depth=1 https://github.com $HOME/android/TOOLS/GCC/los-4.9-64
+          git clone --depth=1 -b lineage-17.1 https://github.com $HOME/android/TOOLS/GCC/los-4.9-32
+
+      - name: Run build.sh
+        env:
+          KBUILD_BUILD_USER: sanditiana26
+          KBUILD_BUILD_HOST: oppo-a37f
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Upload Flashable Kernel ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: A37F-Kernel-LOS22-Flashable
+          path: out/A37F_KERNEL_*.zip
