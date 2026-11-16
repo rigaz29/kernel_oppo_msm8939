@@ -1,6 +1,5 @@
-      - name: Setup AnyKernel3 & dtbtool.c
-        run: |
-          rm -rf anykernel3
+ - name: Setup AnyKernel3 & dtbtool.c 
+  -run | rm -rf anykernel3
           git clone --depth=1 https://github.com anykernel3
           curl -fSL https://githubusercontent.com -o anykernel3/dtbtool.c
           cat << 'EOF' > anykernel3/anykernel.sh
