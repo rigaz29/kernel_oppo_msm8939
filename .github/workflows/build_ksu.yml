@@ -1,7 +1,9 @@
- - name: Setup AnyKernel3 & dtbtool.c 
-  -run | rm -rf anykernel3
+      - name: Setup AnyKernel3 & dtbtool.c
+        run: |
+          rm -rf anykernel3
           git clone --depth=1 https://github.com anykernel3
           curl -fSL https://githubusercontent.com -o anykernel3/dtbtool.c
+          
           cat << 'EOF' > anykernel3/anykernel.sh
           # AnyKernel3 Ramdisk Mod Script
           properties() { '
@@ -23,7 +25,7 @@
 
           . tools/ak3-core.sh;
 
-          dump_boot;
+          split_boot;
           ui_print "Updating Kernel, DTB & Modules for A37f...";
-          write_boot;
+          flash_boot;
           EOF
