@@ -16,6 +16,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5-dev libssl-dev libxml2-utils lzop python3 unzip zip
 
+      - name: Setup RKSU & Custom Kernel Version
+        run: |
+          curl -LSs "https://githubusercontent.com" | bash -s main
+          sed -i '/CONFIG_LOCALVERSION=/d' arch/arm64/configs/lineageos_a37f_defconfig
+          echo 'CONFIG_LOCALVERSION="-Sanditiana26"' >> arch/arm64/configs/lineageos_a37f_defconfig
+          echo 'CONFIG_KSU=y' >> arch/arm64/configs/lineageos_a37f_defconfig
+          echo 'CONFIG_KSU_MANUAL_HOOK=y' >> arch/arm64/configs/lineageos_a37f_defconfig
+          echo 'CONFIG_KPROBES=n' >> arch/arm64/configs/lineageos_a37f_defconfig
+          export KBUILD_BUILD_USER="sanditiana26"
+          export KBUILD_BUILD_HOST="github"
 
       - name: Set Custom Kernel Version & Host
         run: |
